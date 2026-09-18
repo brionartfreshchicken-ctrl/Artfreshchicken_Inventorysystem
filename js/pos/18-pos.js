@@ -368,7 +368,14 @@ document.getElementById('btnCompleteSale').addEventListener('click', async ()=>{
     if(i.sourcePlanId != null && i.sourceFoodId != null){
       const srcPlan = cosPlans().find(p => p.id === i.sourcePlanId);
       const srcFood = srcPlan && (srcPlan.foods||[]).find(f => f.id === i.sourceFoodId);
-      if(srcFood) srcFood.served = (Number(srcFood.served)||0) + c.qty;
+      if(srcFood){
+        srcFood.served = (Number(srcFood.served)||0) + c.qty;
+        // Menu Plan's own draft-autosave doesn't cover this (it's driven
+        // from here, not from typing on that page) — persist it directly
+        // so Plan History's served/profit figures survive a reload.
+        dbUpdateCosFoodServed(srcFood.id, srcFood.served).catch(err =>
+          toast('Could not save the updated servings: ' + err.message, true));
+      }
     }
   });
 

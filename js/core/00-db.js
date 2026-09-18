@@ -223,17 +223,270 @@ async function hydrateActivityTail(){
   state.activity = (data || []).map(mapActivityRow);
 }
 
+/* ---------- recipes ---------- */
+
+function mapRecipeRow(r){
+  return {
+    id: r.id, name: r.name, category: r.category, servings: Number(r.servings),
+    price: r.price == null ? null : Number(r.price), linkedItemId: r.linked_item_id,
+    createdAt: new Date(r.created_at).getTime(),
+    lines: (r.recipe_lines || []).map(l => ({ name: l.name, qtyNum: Number(l.qty_num), qtyUnit: l.qty_unit }))
+  };
+}
+
+function recipeToRow(o){
+  return {
+    name: o.name, category: o.category, servings: o.servings,
+    price: o.price, linked_item_id: o.linkedItemId ?? null
+  };
+}
+
+async function dbInsertRecipe(o){
+  const { data, error } = await sb.from('recipes').insert(recipeToRow(o)).select().single();
+  if(error) throw error;
+  if(o.lines && o.lines.length){
+    const rows = o.lines.map(l => ({ recipe_id: data.id, name: l.name, qty_num: l.qtyNum, qty_unit: l.qtyUnit }));
+    const { error: lineErr } = await sb.from('recipe_lines').insert(rows);
+    if(lineErr) throw lineErr;
+  }
+  const full = await sb.from('recipes').select('*, recipe_lines(*)').eq('id', data.id).single();
+  if(full.error) throw full.error;
+  return mapRecipeRow(full.data);
+}
+
+async function dbUpdateRecipe(id, o){
+  const { error } = await sb.from('recipes').update(recipeToRow(o)).eq('id', id);
+  if(error) throw error;
+  const { error: delErr } = await sb.from('recipe_lines').delete().eq('recipe_id', id);
+  if(delErr) throw delErr;
+  if(o.lines && o.lines.length){
+    const rows = o.lines.map(l => ({ recipe_id: id, name: l.name, qty_num: l.qtyNum, qty_unit: l.qtyUnit }));
+    const { error: lineErr } = await sb.from('recipe_lines').insert(rows);
+    if(lineErr) throw lineErr;
+  }
+  const full = await sb.from('recipes').select('*, recipe_lines(*)').eq('id', id).single();
+  if(full.error) throw full.error;
+  return mapRecipeRow(full.data);
+}
+
+async function dbDeleteRecipe(id){
+  const { error } = await sb.from('recipes').delete().eq('id', id);
+  if(error) throw error;
+}
+
+/* ---------- production ---------- */
+
+function mapProductionRow(r){
+  return {
+    id: r.id, prodNumber: r.prod_number, date: new Date(r.date).getTime(),
+    recipeId: r.recipe_id, recipeName: r.recipe_name, qtyProduced: Number(r.qty_produced),
+    totalCost: Number(r.total_cost), producedBy: r.produced_by || '',
+    ingredientsConsumed: (r.production_ingredients || []).map(i => ({
+      name: i.name, qty: Number(i.qty), unit: i.unit || ''
+    }))
+  };
+}
+
+/* Runs complete_production() (0017_complete_production.sql) — every
+   ingredient's stock, the linked item's stock/cost, all the activity
+   rows, and the productions record happen atomically server-side. */
+async function dbCompleteProduction({ recipeId, qtyProduced, producedBy, lines, linkedItemId, totalCost }){
+  const { data: productionId, error } = await sb.rpc('complete_production', {
+    p_recipe_id: recipeId,
+    p_qty_produced: qtyProduced,
+    p_produced_by: producedBy,
+    p_ingredient_lines: lines.map(l => ({ item_id: l.item.id, name: l.name, need: l.need, unit: l.unit })),
+    p_linked_item_id: linkedItemId,
+    p_total_cost: totalCost
+  });
+  if(error) throw error;
+
+  const { data, error: fetchErr } = await sb.from('productions')
+    .select('*, production_ingredients(*)').eq('id', productionId).single();
+  if(fetchErr) throw fetchErr;
+  return mapProductionRow(data);
+}
+
+/* ---------- Menu Plan: plans, foods, ingredient lines ----------
+   Unlike everything above, this page has no modal/Save-draft pattern —
+   every keystroke mutates state directly, live. Persisting on every
+   keystroke would be excessive network chatter, so field edits are
+   debounced per food (scheduleCosFoodSync); explicit actions (the food's
+   own Save button, add/remove a food, create/delete a plan) flush or
+   write immediately instead. */
+
+function mapCosFoodLineRow(r){
+  return {
+    id: r.id, name: r.name || '',
+    qtyNum: r.qty_num == null ? '' : Number(r.qty_num), qtyUnit: r.qty_unit || 'pcs',
+    qty: `${r.qty_num ?? ''} ${r.qty_unit || ''}`.trim(),
+    priceNum: r.price_num == null ? '' : Number(r.price_num),
+    priceMode: r.price_mode || 'unit', unit: '',
+    total: r.total_cost == null ? 0 : Number(r.total_cost),
+    manual: !!r.manual
+  };
+}
+
+function mapCosFoodRow(r){
+  const f = {
+    id: r.id, name: r.name || '', servings: Number(r.servings) || 0, served: Number(r.served) || 0,
+    price: r.price == null ? null : Number(r.price),
+    pricesHidden: !!r.prices_hidden, collapsed: !!r.collapsed,
+    saved: r.saved_at ? new Date(r.saved_at).getTime() : null,
+    linkedItemId: r.linked_item_id,
+    deducted: r.deducted || null,
+    deductedAt: r.deducted_at ? new Date(r.deducted_at).getTime() : null,
+    created: new Date(r.created_at).getTime(),
+    lines: (r.cos_food_lines || []).map(mapCosFoodLineRow)
+  };
+  f.lines.forEach(l => { syncQtyText(l); syncUnitText(l); });
+  return f;
+}
+
+function mapCosPlanRow(r){
+  return {
+    id: r.id, name: r.name, date: r.date, created: new Date(r.created_at).getTime(),
+    foods: (r.cos_foods || []).map(mapCosFoodRow)
+  };
+}
+
+/* planId is only meaningful (and only needed) on insert — a food never
+   moves to a different plan afterward, so updates omit it entirely. */
+function cosFoodToRow(f, planId){
+  const row = {
+    name: f.name || '', servings: f.servings || 0, served: f.served || 0,
+    price: f.price, prices_hidden: !!f.pricesHidden, collapsed: !!f.collapsed,
+    saved_at: f.saved ? new Date(f.saved).toISOString() : null,
+    linked_item_id: f.linkedItemId ?? null,
+    deducted: f.deducted ?? null,
+    deducted_at: f.deductedAt ? new Date(f.deductedAt).toISOString() : null
+  };
+  if(planId != null) row.plan_id = planId;
+  return row;
+}
+
+function cosLineToRow(l, foodId){
+  return {
+    food_id: foodId, name: l.name || '',
+    qty_num: (l.qtyNum === '' || l.qtyNum == null) ? null : Number(l.qtyNum),
+    qty_unit: l.qtyUnit || null,
+    price_num: (l.priceNum === '' || l.priceNum == null) ? null : Number(l.priceNum),
+    price_mode: l.priceMode || 'unit', total_cost: l.total ?? 0, manual: !!l.manual
+  };
+}
+
+async function dbInsertCosPlan(name, date){
+  const { data, error } = await sb.from('cos_plans').insert({ name, date }).select().single();
+  if(error) throw error;
+  return mapCosPlanRow({ ...data, cos_foods: [] });
+}
+
+async function dbUpdateCosPlanName(id, name){
+  const { error } = await sb.from('cos_plans').update({ name }).eq('id', id);
+  if(error) throw error;
+}
+
+async function dbDeleteCosPlan(id){
+  const { error } = await sb.from('cos_plans').delete().eq('id', id);
+  if(error) throw error;
+}
+
+async function dbInsertCosFood(planId, f){
+  const { data, error } = await sb.from('cos_foods').insert(cosFoodToRow(f, planId)).select().single();
+  if(error) throw error;
+  return mapCosFoodRow({ ...data, cos_food_lines: [] });
+}
+
+async function dbDeleteCosFood(id){
+  const { error } = await sb.from('cos_foods').delete().eq('id', id);
+  if(error) throw error;
+}
+
+/* Full upsert of one food's own columns + a delete-all/insert-all of its
+   lines — simplest way to keep them consistent given lines are freely
+   added/reordered/removed client-side. */
+async function dbSyncCosFood(food){
+  const { error } = await sb.from('cos_foods').update(cosFoodToRow(food)).eq('id', food.id);
+  if(error) throw error;
+  const { error: delErr } = await sb.from('cos_food_lines').delete().eq('food_id', food.id);
+  if(delErr) throw delErr;
+  if(food.lines && food.lines.length){
+    const rows = food.lines.map(l => cosLineToRow(l, food.id));
+    const { error: insErr } = await sb.from('cos_food_lines').insert(rows);
+    if(insErr) throw insErr;
+  }
+}
+
+async function dbUpdateCosFoodServed(id, served){
+  const { error } = await sb.from('cos_foods').update({ served }).eq('id', id);
+  if(error) throw error;
+}
+
+const COS_SYNC_DEBOUNCE_MS = 800;
+const cosSyncTimers = new Map();   // food.id -> timeout handle
+
+/* Debounced autosave for live Menu Plan edits — cancels and restarts on
+   every call for the same food, so it only actually writes once typing
+   pauses. Explicit actions (Save button, delete) should flush/act
+   immediately instead of going through this. */
+function scheduleCosFoodSync(food){
+  const key = food.id;
+  if(cosSyncTimers.has(key)) clearTimeout(cosSyncTimers.get(key));
+  const handle = setTimeout(async ()=>{
+    cosSyncTimers.delete(key);
+    try{
+      await dbSyncCosFood(food);
+    }catch(err){
+      toast('Could not save Menu Plan changes: ' + err.message, true);
+    }
+  }, COS_SYNC_DEBOUNCE_MS);
+  cosSyncTimers.set(key, handle);
+}
+
+function flushCosFoodSync(food){
+  if(cosSyncTimers.has(food.id)){
+    clearTimeout(cosSyncTimers.get(food.id));
+    cosSyncTimers.delete(food.id);
+  }
+}
+
 /* ---------- hydrate: pulls items/suppliers/purchases/activity from
    Supabase into `state`, replacing whatever loadState() put there.
    Called once at boot, after `state` already has its other fields
    (recipes, cosPlans, sales, expenses... not yet migrated) from the
    local save. ---------- */
+async function hydrateRecipes(){
+  const { data, error } = await sb.from('recipes').select('*, recipe_lines(*)').order('name');
+  if(error){ toast('Could not load Recipes: ' + error.message, true); return; }
+  state.recipes = (data || []).map(mapRecipeRow);
+}
+
+async function hydrateProductions(){
+  const { data, error } = await sb.from('productions')
+    .select('*, production_ingredients(*)').order('date', { ascending: false });
+  if(error){ toast('Could not load Production history: ' + error.message, true); return; }
+  state.productions = (data || []).map(mapProductionRow);
+}
+
+async function hydrateCosPlans(){
+  const { data, error } = await sb.from('cos_plans')
+    .select('*, cos_foods(*, cos_food_lines(*))').order('date', { ascending: false });
+  if(error){ toast('Could not load Menu Plan data: ' + error.message, true); return; }
+  state.cosPlans = (data || []).map(mapCosPlanRow);
+  if(!state.cosActiveId || !state.cosPlans.some(p => p.id === state.cosActiveId)){
+    state.cosActiveId = state.cosPlans[0] ? state.cosPlans[0].id : null;
+  }
+}
+
 async function hydrateFromSupabase(){
   const [itemsRes, suppliersRes, purchasesRes] = await Promise.all([
     sb.from('items').select('*').order('id'),
     sb.from('suppliers').select('*').order('name'),
     sb.from('purchases').select('*, purchase_lines(*)').order('created_at', { ascending: false }),
-    hydrateActivityTail()
+    hydrateActivityTail(),
+    hydrateRecipes(),
+    hydrateProductions(),
+    hydrateCosPlans()
   ]);
 
   for(const res of [itemsRes, suppliersRes, purchasesRes]){

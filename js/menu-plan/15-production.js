@@ -81,50 +81,40 @@ document.getElementById('btnCompleteProduction').addEventListener('click', async
   if(preview.short.length){ toast('Not enough ingredients on hand for this quantity', true); return; }
 
   const producedBy = document.getElementById('pr-producedby').value.trim() || (currentUser?currentUser.name:'—');
-  let prodNumber;
 
+  // complete_production() (0017_complete_production.sql) does every
+  // ingredient's stock, the linked item's stock/cost, the activity rows,
+  // and the production record atomically.
+  let production;
   try{
-    prodNumber = await nextDocNumber('PROD');
-
-    for(const l of preview.lines){
-      l.item.stock = Math.round((l.item.stock - l.need) * 1000) / 1000;
-      await dbUpdateItemStock(l.item.id, l.item.stock);
-      await logActivity(l.item, 'out', l.need, 'used', prodNumber);
-    }
-
-    if(preview.recipe.linkedItemId){
-      const linked = byId(preview.recipe.linkedItemId);
-      if(linked){
-        linked.stock += preview.qty;
-        linked.cost = preview.qty>0 ? preview.totalCost/preview.qty : linked.cost;
-        await dbUpdateItemStockCost(linked.id, linked.stock, linked.cost);
-        await logActivity(linked, 'in', preview.qty, 'produced', prodNumber);
-      }
-    }
+    production = await dbCompleteProduction({
+      recipeId: preview.recipe.id, qtyProduced: preview.qty, producedBy,
+      lines: preview.lines, linkedItemId: preview.recipe.linkedItemId,
+      totalCost: preview.totalCost
+    });
   }catch(err){
     toast(err.message || 'Could not record that production', true);
     return;
   }
 
-  // Productions themselves (the receipt/history record) still live only
-  // locally — moving that to Supabase is a later phase. The stock and
-  // movement-log effects above are already durable either way.
-  state.productions.push({
-    id: state.nextProductionId++,
-    prodNumber,
-    date: Date.now(),
-    recipeId: preview.recipe.id,
-    recipeName: preview.recipe.name,
-    qtyProduced: preview.qty,
-    ingredientsConsumed: preview.lines.map(l=>({name:l.name, qty:round2(l.need), unit:l.unit})),
-    totalCost: preview.totalCost,
-    producedBy
+  // Mirror what the server just did, for instant UI feedback without a re-fetch.
+  preview.lines.forEach(l=>{
+    l.item.stock = Math.round((l.item.stock - l.need) * 1000) / 1000;
   });
+  if(preview.recipe.linkedItemId){
+    const linked = byId(preview.recipe.linkedItemId);
+    if(linked){
+      linked.stock += preview.qty;
+      linked.cost = preview.qty>0 ? preview.totalCost/preview.qty : linked.cost;
+    }
+  }
+  state.productions.unshift(production);
+  await hydrateActivityTail();
 
   document.getElementById('pr-qty').value = 1;
   saveState();
   renderAll();
-  toast(`${prodNumber} recorded — ${peso(preview.totalCost)} in ingredients used`);
+  toast(`${production.prodNumber} recorded — ${peso(production.totalCost)} in ingredients used`);
 });
 
 document.getElementById('tbl-productions').addEventListener('click', e=>{

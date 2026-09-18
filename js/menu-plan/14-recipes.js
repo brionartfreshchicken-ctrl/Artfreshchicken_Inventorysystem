@@ -167,7 +167,7 @@ function openRecipeModal(mode, recipe){
   });
 
   document.getElementById('f-cancel').addEventListener('click', closeModal);
-  document.getElementById('f-save').addEventListener('click', ()=>{
+  document.getElementById('f-save').addEventListener('click', async ()=>{
     const name = document.getElementById('rc-name').value.trim();
     const category = document.getElementById('rc-category').value;
     const servings = parseFloat(document.getElementById('rc-servings').value);
@@ -181,12 +181,19 @@ function openRecipeModal(mode, recipe){
     if(!recipeDraftLines.length){ toast('Add at least one ingredient', true); return; }
 
     const data = { name, category, servings, price, linkedItemId, lines: recipeDraftLines.map(l=>({...l})) };
-    if(isEdit){
-      Object.assign(recipe, data);
-      toast('Recipe updated');
-    }else{
-      state.recipes.push({id: state.nextRecipeId++, createdAt: Date.now(), ...data});
-      toast('Recipe added');
+    try{
+      if(isEdit){
+        const updated = await dbUpdateRecipe(recipe.id, data);
+        Object.assign(recipe, updated);
+        toast('Recipe updated');
+      }else{
+        const created = await dbInsertRecipe(data);
+        state.recipes.push(created);
+        toast('Recipe added');
+      }
+    }catch(err){
+      toast(err.message || 'Could not save that recipe', true);
+      return;
     }
     saveState();
     renderAll();
@@ -200,7 +207,12 @@ function confirmDeleteRecipe(recipe){
        Past Production records are not affected — they keep their own copy of what was used.</div>`,
     `<button class="btn ghost" id="f-cancel">Cancel</button><button class="btn danger" id="f-del">Delete</button>`);
   document.getElementById('f-cancel').addEventListener('click', closeModal);
-  document.getElementById('f-del').addEventListener('click', ()=>{
+  document.getElementById('f-del').addEventListener('click', async ()=>{
+    try{
+      await dbDeleteRecipe(recipe.id);
+    }catch(err){
+      return toast(err.message || 'Could not delete that recipe', true);
+    }
     state.recipes = state.recipes.filter(r=>r.id!==recipe.id);
     saveState(); renderAll(); closeModal();
     toast('Recipe deleted');

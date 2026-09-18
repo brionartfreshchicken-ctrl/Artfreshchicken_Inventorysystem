@@ -32,27 +32,16 @@ function planLabel(p){
   return `${p.name || 'Untitled Plan'} · ${planDate(p)} — ${n} food${n===1?'':'s'}`;
 }
 
-function newCosPlan(name, date){
-  const p = {
-    id: state.nextCosPlanId++,
-    name: (name || '').trim() || 'Untitled Plan',
-    date: date || isoDate(new Date()),
-    created: Date.now(),
-    foods: []
-  };
+async function newCosPlan(name, date){
+  const p = await dbInsertCosPlan((name || '').trim() || 'Untitled Plan', date || isoDate(new Date()));
   cosPlans().unshift(p);
   state.cosActiveId = p.id;
   return p;
 }
 
-function newCosFood(name){
-  const f = {
-    id: state.nextCosId++,
-    name: name || 'New Food',
-    servings: 10, served: 0, price: 0,
-    lines: [],
-    created: Date.now()
-  };
+async function newCosFood(name){
+  const plan = activePlan();
+  const f = await dbInsertCosFood(plan.id, { name: name || 'New Food', servings: 10, served: 0, price: 0, lines: [] });
   cosFoods().push(f);
   return f;
 }
@@ -240,7 +229,13 @@ function syncActivePlanFoodsToPOS(){
     }
     const t = foodTotals(f);
     const remaining = Math.max(0, (Number(f.servings)||0) - (Number(f.served)||0));
-    let item = f.linkedItemId ? byId(f.linkedItemId) : null;
+    // A brand-new mirrored item is only ever created at Save time (see
+    // btnCosSave's finish()/syncFoodToPOSAndPersist below), where it can
+    // be inserted into Supabase and get a real id before anything
+    // references it — this function only keeps an ALREADY-linked item's
+    // local numbers in step (e.g. stock after a POS sale changes `served`;
+    // that stock change is persisted by POS checkout itself, not here).
+    const item = f.linkedItemId ? byId(f.linkedItemId) : null;
     if(item){
       item.name = name;
       item.cost = t.perServing || 0;
@@ -248,18 +243,39 @@ function syncActivePlanFoodsToPOS(){
       item.stock = remaining;
       item.sourcePlanId = plan.id;
       item.sourceFoodId = f.id;
-    }else{
-      item = {
-        id: state.nextId++, category:'food', name, size:'',
-        stock: remaining, unit:'serving', cost: t.perServing || 0,
-        selling: f.price!=null ? Number(f.price) : null, threshold: 0,
-        sku:'', supplierId:null, maxStock:null, conv:null,
-        sourcePlanId: plan.id, sourceFoodId: f.id
-      };
-      state.items.push(item);
-      f.linkedItemId = item.id;
     }
   });
+}
+
+/* Runs once, at the moment a food is explicitly Saved — creates or
+   updates its mirrored POS item in Supabase (getting a real id first,
+   before cos_foods.linked_item_id can reference it), then persists the
+   food + its lines. Everything syncActivePlanFoodsToPOS does afterward
+   for this food is just keeping already-linked local numbers in step. */
+async function syncFoodToPOSAndPersist(f){
+  const plan = activePlan();
+  const name = (f.name||'').trim();
+  const t = foodTotals(f);
+  const remaining = Math.max(0, (Number(f.servings)||0) - (Number(f.served)||0));
+  const payload = {
+    category:'food', name, size:'', stock: remaining, unit:'serving',
+    cost: t.perServing || 0, selling: f.price!=null ? Number(f.price) : null,
+    threshold: 0, sku:'', supplierId:null, maxStock:null, conv:null,
+    sourcePlanId: plan.id, sourceFoodId: f.id
+  };
+
+  let item = f.linkedItemId ? byId(f.linkedItemId) : null;
+  if(item){
+    const updated = await dbUpdateItem(item.id, payload);
+    Object.assign(item, updated);
+  }else{
+    item = await dbInsertItem(payload);
+    state.items.push(item);
+    f.linkedItemId = item.id;
+  }
+
+  flushCosFoodSync(f);   // an explicit save wins over any pending debounce
+  await dbSyncCosFood(f);
 }
 
 function renderCos(){
@@ -481,6 +497,7 @@ document.getElementById('cos-foods').addEventListener(ev, e=>{
 
     refreshCosNumbers();   // also syncs this food onto POS before the save below
     saveState();
+    scheduleCosFoodSync(f);
     return;
   }
 
@@ -548,6 +565,7 @@ document.getElementById('cos-foods').addEventListener(ev, e=>{
   if(caption) caption.textContent = lineFormulaCaption(line);
   saveState();
   refreshCosNumbers();
+  scheduleCosFoodSync(f);
 }));
 
 // Buttons inside the food cards
@@ -560,6 +578,7 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
       qtyNum:1, qtyUnit:'pcs', qty:'1 pcs',
       priceNum:'', priceMode:'unit', unit:'', total:0});
     saveState(); renderCos();
+    scheduleCosFoodSync(f);
     const boxes = document.querySelectorAll(`[data-cl="name"][data-fid="${f.id}"]`);
     if(boxes.length) boxes[boxes.length-1].focus();
     return;
@@ -571,6 +590,7 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
     f.collapsed = false;        // open it
     f.pricesHidden = false;     // and show what you came to change
     saveState(); renderCos();
+    scheduleCosFoodSync(f);
     const box = document.querySelector(`[data-cl="name"][data-fid="${f.id}"]`);
     if(box) box.scrollIntoView({block:'center'});
     return;
@@ -581,10 +601,16 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
     const f = cosFood(save.dataset.fdSave); if(!f) return;
     if(!(f.lines||[]).length) return toast('Add an ingredient first', true);
 
-    const finish = (note)=>{
+    const finish = async (note)=>{
       f.saved = Date.now();
       f.pricesHidden = true;
       f.collapsed = true;
+      try{
+        await syncFoodToPOSAndPersist(f);
+      }catch(err){
+        toast(err.message || 'Could not save that food', true);
+        return;
+      }
       saveState(); renderAll();
       toast(note);
     };
@@ -635,6 +661,7 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
     const f = cosFood(prices.dataset.fdPrices); if(!f) return;
     f.pricesHidden = !f.pricesHidden;
     saveState(); renderCos();
+    scheduleCosFoodSync(f);
     return;
   }
 
@@ -643,6 +670,7 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
     const f = cosFood(toggle.dataset.fdToggle); if(!f) return;
     f.collapsed = !f.collapsed;
     saveState(); renderCos();
+    scheduleCosFoodSync(f);
     return;
   }
 
@@ -656,9 +684,17 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
          and its ${(f.lines||[]).length} ingredient line${(f.lines||[]).length===1?'':'s'}?</div>
        <div class="hint" style="margin-top:10px;color:var(--green);">
          That removes ${peso(t.cost)} of planned ingredients.</div>`,
-      'Remove', ()=>{
+      'Remove', async ()=>{
         const back = returnDeduction(f);      // put the ingredients back
-        if(f.linkedItemId){                   // fully remove it from POS — see syncActivePlanFoodsToPOS
+        flushCosFoodSync(f);
+        try{
+          if(f.linkedItemId) await dbDeleteItem(f.linkedItemId);   // fully remove it from POS
+          await dbDeleteCosFood(f.id);
+        }catch(err){
+          toast(err.message || 'Could not remove that food', true);
+          return;
+        }
+        if(f.linkedItemId){
           state.items = state.items.filter(i => i.id !== f.linkedItemId);
         }
         const plan = activePlan();
@@ -677,6 +713,7 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
     line.manual = false;
     const got = applyAutoCost(line);
     saveState(); renderCos();
+    scheduleCosFoodSync(f);
     toast(got !== null ? `Recosted to ${peso(got)}` : 'Add a number to quantity and unit price', got === null);
     return;
   }
@@ -685,13 +722,19 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
   if(delLine){
     const f = cosFood(delLine.dataset.fid); if(!f) return;
     f.lines = f.lines.filter(l => l.id !== Number(delLine.dataset.clDel));
+    scheduleCosFoodSync(f);
     saveState(); renderCos();
   }
 });
 
-document.getElementById('btnCosAddFood').addEventListener('click', ()=>{
+document.getElementById('btnCosAddFood').addEventListener('click', async ()=>{
   if(!activePlan()) return toast('Create a plan for a date first', true);
-  const f = newCosFood('New Food');
+  let f;
+  try{
+    f = await newCosFood('New Food');
+  }catch(err){
+    return toast(err.message || 'Could not create that food', true);
+  }
   saveState(); renderCos();
   const box = document.querySelector(`[data-fd="name"][data-id="${f.id}"]`);
   if(box){ box.focus(); box.select(); box.scrollIntoView({block:'center'}); }
@@ -777,6 +820,18 @@ function renderCosHistory(){
   </tr>`;
 }
 
+/* Shared by both delete-plan entry points below. Supabase cascades
+   cos_plans -> cos_foods -> cos_food_lines on delete, but a mirrored POS
+   item only gets its source_plan_id/source_food_id nulled (on delete set
+   null), not removed — so linked items need an explicit delete too, same
+   as the client always intended ("taken off POS too"). */
+async function deleteCosPlanAndLinkedItems(p){
+  const linkedIds = (p.foods||[]).map(f=>f.linkedItemId).filter(Boolean);
+  for(const id of linkedIds) await dbDeleteItem(id);
+  await dbDeleteCosPlan(p.id);
+  return linkedIds;
+}
+
 document.getElementById('cos-history').addEventListener('click', e=>{
   const open = e.target.closest('[data-ch-open]');
   if(open){
@@ -811,8 +866,13 @@ document.getElementById('cos-history').addEventListener('click', e=>{
          ${linkedCount===1?'it':'they'} will be taken off POS too.</div>` : ''}
        <div class="hint" style="margin-top:10px;color:var(--yellow);">
          This is planning data — your ingredient stock and past sales records are not touched.</div>`,
-      'Delete plan', ()=>{
-        const linkedIds = (p.foods||[]).map(f=>f.linkedItemId).filter(Boolean);
+      'Delete plan', async ()=>{
+        let linkedIds;
+        try{
+          linkedIds = await deleteCosPlanAndLinkedItems(p);
+        }catch(err){
+          return toast(err.message || 'Could not delete that plan', true);
+        }
         if(linkedIds.length) state.items = state.items.filter(i => !linkedIds.includes(i.id));
         state.cosPlans = cosPlans().filter(x => x.id !== p.id);
         if(state.cosActiveId === p.id)
@@ -828,6 +888,7 @@ document.getElementById('btnDownloadAllPlans').addEventListener('click', downloa
 /* ---------- Plans: pick, create, delete ---------- */
 
 /* Rename the plan straight from its header */
+const cosPlanRenameTimers = new Map();
 document.getElementById('cos-plan-name').addEventListener('input', e=>{
   const p = activePlan(); if(!p) return;
   p.name = e.target.value;
@@ -835,6 +896,16 @@ document.getElementById('cos-plan-name').addEventListener('input', e=>{
   const pick = document.getElementById('cos-plan-pick');
   const opt = pick.querySelector(`option[value="${p.id}"]`);
   if(opt) opt.textContent = planLabel(p);
+
+  if(cosPlanRenameTimers.has(p.id)) clearTimeout(cosPlanRenameTimers.get(p.id));
+  cosPlanRenameTimers.set(p.id, setTimeout(async ()=>{
+    cosPlanRenameTimers.delete(p.id);
+    try{
+      await dbUpdateCosPlanName(p.id, p.name);
+    }catch(err){
+      toast('Could not save the plan name: ' + err.message, true);
+    }
+  }, COS_SYNC_DEBOUNCE_MS));
 });
 
 document.getElementById('cos-plan-pick').addEventListener('change', e=>{
@@ -844,10 +915,14 @@ document.getElementById('cos-plan-pick').addEventListener('change', e=>{
 });
 
 /* The start card, shown when no plan exists */
-document.getElementById('btnCosCreate').addEventListener('click', ()=>{
+document.getElementById('btnCosCreate').addEventListener('click', async ()=>{
   const date   = document.getElementById('cos-new-date').value;
   if(!date)     return toast('Pick the date you are planning for', true);
-  newCosPlan(document.getElementById('cos-new-name').value, date);
+  try{
+    await newCosPlan(document.getElementById('cos-new-name').value, date);
+  }catch(err){
+    return toast(err.message || 'Could not create that plan', true);
+  }
   saveState();
   renderCos();
   toast('Plan created — now add your foods');
@@ -866,14 +941,18 @@ document.getElementById('btnCosNewPlan').addEventListener('click', ()=>{
       <button class="btn primary" id="np-save">Create Plan</button>`);
 
   document.getElementById('np-cancel').addEventListener('click', closeModal);
-  document.getElementById('np-save').addEventListener('click', ()=>{
+  document.getElementById('np-save').addEventListener('click', async ()=>{
     const name   = document.getElementById('np-name').value.trim();
     const date   = document.getElementById('np-date').value;
     if(!name)       return toast('Give the plan a name', true);
     if(!date)       return toast('Pick a date', true);
     if(cosPlans().some(p => p.date === date))
       return toast('There is already a plan for that date', true);
-    newCosPlan(name, date);
+    try{
+      await newCosPlan(name, date);
+    }catch(err){
+      return toast(err.message || 'Could not create that plan', true);
+    }
     saveState(); closeModal(); renderCos();
     toast('Plan created — now add your foods');
   });
@@ -895,8 +974,13 @@ document.getElementById('btnCosDeletePlan').addEventListener('click', ()=>{
        ${linkedCount===1?'it':'they'} will be taken off POS too.</div>` : ''}
      <div class="hint" style="margin-top:10px;color:var(--yellow);">
        This is planning data — your ingredient stock and past sales records are not touched.</div>`,
-    'Delete plan', ()=>{
-      const linkedIds = (p.foods||[]).map(f=>f.linkedItemId).filter(Boolean);
+    'Delete plan', async ()=>{
+      let linkedIds;
+      try{
+        linkedIds = await deleteCosPlanAndLinkedItems(p);
+      }catch(err){
+        return toast(err.message || 'Could not delete that plan', true);
+      }
       if(linkedIds.length) state.items = state.items.filter(i => !linkedIds.includes(i.id));
       state.cosPlans = cosPlans().filter(x => x.id !== p.id);
       state.cosActiveId = cosPlans()[0] ? cosPlans()[0].id : null;
