@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>FoodTrack — Full System</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d9488">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FoodTrack">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+<!-- Builds the .xlsx report. If this can't load (no internet),
+     the export falls back to CSV, which Excel opens too. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+
+<div id="loading"><span class="dotsanim">LOADING INVENTORY</span></div>
+
+<!-- ============ LOGIN GATE ============
+     Nothing below this is reachable until someone signs in. -->
+<div id="authScreen" style="display:none;">
+  <div class="auth-box">
+    <div class="auth-brand">
+      <div class="b1">CAFETERIA INVENTORY</div>
+      <div class="b2">SYSTEM v1.0</div>
+    </div>
+
+    <!-- Shown the very first time, when no accounts exist yet -->
+    <div id="setupPane" style="display:none;">
+      <div class="auth-title">Create the owner account</div>
+      <div class="auth-sub">No accounts exist yet. This first one is the Admin.</div>
+      <div class="field"><label>Gmail address</label><input id="st-name" type="email" placeholder="you@gmail.com" autocomplete="email"/></div>
+      <div class="field"><label>Username</label><input id="st-user" placeholder="maria" autocomplete="username"/></div>
+      <div class="field"><label>Password</label><input id="st-pass" type="password" placeholder="At least 6 characters" autocomplete="new-password"/></div>
+      <div class="field"><label>Confirm password</label><input id="st-pass2" type="password" placeholder="Type it again" autocomplete="new-password"/></div>
+      <div class="field"><label>Security question</label><select id="st-q"></select></div>
+      <div class="field" id="st-qcustom-wrap" style="display:none;"><label>Your own question</label><input id="st-qcustom" placeholder="e.g. What street did I grow up on?"/></div>
+      <div class="field"><label>Answer</label><input id="st-a" placeholder="Used only if you forget your password"/></div>
+      <div class="auth-msg" id="setupMsg"></div>
+      <button class="btn primary auth-go" id="btnSetup">Create account &amp; sign in</button>
+    </div>
+
+    <!-- Normal sign in / sign up -->
+    <div id="loginPane" style="display:none;">
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabSignin">Sign in</button>
+        <button class="auth-tab" id="tabSignup">Sign up</button>
+      </div>
+
+      <div id="signinForm">
+        <div class="auth-title">Sign in</div>
+        <div class="auth-sub">Enter your account details to continue.</div>
+        <div class="field"><label>Username</label><input id="li-user" placeholder="username" autocomplete="username"/></div>
+        <div class="field"><label>Password</label><input id="li-pass" type="password" placeholder="password" autocomplete="current-password"/></div>
+        <div class="auth-msg" id="loginMsg"></div>
+        <button class="btn primary auth-go" id="btnLogin">Sign in</button>
+        <button class="auth-link" id="btnForgot">Forgot your password?</button>
+      </div>
+
+      <div id="signupForm" style="display:none;">
+        <div class="auth-title">Create an account</div>
+        <div class="auth-sub">New accounts get Staff access. An Admin can change that later.</div>
+        <div class="field"><label>Gmail address</label><input id="su-name" type="email" placeholder="you@gmail.com" autocomplete="email"/></div>
+        <div class="field"><label>Username</label><input id="su-user" placeholder="juan" autocomplete="username"/></div>
+        <div class="field"><label>Password</label><input id="su-pass" type="password" placeholder="At least 6 characters" autocomplete="new-password"/></div>
+        <div class="field"><label>Confirm password</label><input id="su-pass2" type="password" placeholder="Type it again" autocomplete="new-password"/></div>
+        <div class="field"><label>Security question</label><select id="su-q"></select></div>
+        <div class="field" id="su-qcustom-wrap" style="display:none;"><label>Your own question</label><input id="su-qcustom" placeholder="e.g. What street did I grow up on?"/></div>
+        <div class="field"><label>Answer</label><input id="su-a" placeholder="Used only if you forget your password"/></div>
+        <div class="auth-msg" id="signupMsg"></div>
+        <button class="btn primary auth-go" id="btnSignup">Create account</button>
+      </div>
+
+      <!-- One-time code, used by both signup and reset -->
+      <div id="otpPane" style="display:none;">
+        <div class="auth-title">Enter your code</div>
+        <div class="auth-sub" id="otpSub">We sent a 6-digit code to your Gmail.</div>
+        <div class="field">
+          <label>6-digit code</label>
+          <input id="otp-code" inputmode="numeric" maxlength="6" placeholder="000000"
+                 style="letter-spacing:6px;text-align:center;font-size:19px;"/>
+        </div>
+        <div class="auth-msg" id="otpMsg"></div>
+        <button class="btn primary auth-go" id="otpVerify">Verify code</button>
+        <button class="auth-link" id="otpResend">Resend code</button>
+        <button class="auth-link" id="otpUseQuestion" style="display:none;">Use my security question instead</button>
+        <button class="auth-link" id="otpCancel" style="color:var(--dimmer);">Cancel</button>
+        <div id="otpDemo" style="display:none;margin-top:14px;padding:12px;border:1px dashed var(--yellow);
+             border-radius:8px;background:rgba(197,140,0,.07);font-size:10.5px;color:var(--dim);line-height:1.6;"></div>
+      </div>
+
+      <!-- Password reset, three steps in place -->
+      <div id="forgotPane" style="display:none;">
+        <div class="auth-title">Reset your password</div>
+        <div class="auth-sub" id="fpSub">Start by telling us which account.</div>
+
+        <div id="fpStep1">
+          <div class="field"><label>Gmail address</label>
+            <input id="fp-user" type="email" placeholder="you@gmail.com" autocomplete="email"/></div>
+          <div class="auth-msg" id="fpMsg1"></div>
+          <button class="btn primary auth-go" id="fpNext1">Send me a code</button>
+        </div>
+
+        <div id="fpPick" style="display:none;">
+          <div class="hint" style="margin-bottom:14px;padding:11px;border:1px dashed var(--yellow);
+               border-radius:8px;background:rgba(197,140,0,.07);line-height:1.6;">
+            No account uses that Gmail yet. Pick your account below and the
+            address gets attached to it once you verify the code.
+          </div>
+          <div class="field"><label>Which account is yours?</label><select id="fp-account"></select></div>
+          <div class="auth-msg" id="fpMsgP"></div>
+          <button class="btn primary auth-go" id="fpPickGo">Continue</button>
+        </div>
+
+        <div id="fpStep2" style="display:none;">
+          <div class="field"><label>Security question</label><div class="fp-question" id="fp-question"></div></div>
+          <div class="field"><label>Your answer</label><input id="fp-answer" placeholder="Not case sensitive"/></div>
+          <div class="auth-msg" id="fpMsg2"></div>
+          <button class="btn primary auth-go" id="fpNext2">Verify answer</button>
+        </div>
+
+        <div id="fpStep3" style="display:none;">
+          <div class="field"><label>New password</label><input id="fp-p1" type="password" placeholder="At least 6 characters"/></div>
+          <div class="field"><label>Confirm new password</label><input id="fp-p2" type="password" placeholder="Type it again"/></div>
+          <div class="auth-msg" id="fpMsg3"></div>
+          <button class="btn primary auth-go" id="fpSave">Set new password</button>
+        </div>
+
+        <button class="auth-link" id="fpBack">&larr; Back to sign in</button>
+        <button class="auth-link" id="fpStuck" style="color:var(--dimmer);">Completely locked out?</button>
+
+        <div id="fpEmergency" style="display:none;margin-top:14px;padding-top:16px;border-top:1px dashed var(--border);">
+          <div class="auth-title" style="font-size:12px;">Emergency account reset</div>
+          <div class="auth-sub">
+            Use this only if nobody can sign in. It deletes <strong>every user account</strong>
+            and returns you to the first-run setup screen so you can create a new Admin.
+            <br><br>
+            Your inventory, sales history and reports are <strong>not</strong> touched.
+          </div>
+          <div class="field">
+            <label>Type <strong>RESET ACCOUNTS</strong> to confirm</label>
+            <input id="fp-confirm" placeholder="RESET ACCOUNTS"/>
+          </div>
+          <div class="auth-msg" id="fpMsgE"></div>
+          <button class="btn danger auth-go" id="fpWipe">Delete all accounts</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="auth-foot">
+      Access is per-account. Staff can move stock; Admins can also add,
+      edit, delete, and open Settings.
+    </div>
+  </div>
+</div>
+
+<div class="app" id="app" style="visibility:hidden;">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">🍲</div>
+      <div>
+        <div class="b1">FoodTrack</div>
+        <div class="b2">Inventory &amp; Costing</div>
+      </div>
+    </div>
+    <ul class="navlist" id="navlist">
+      <li class="nav-item active" data-view="dashboard"><span class="ic">🖥</span>Dashboard<span class="cursor"></span></li>
+
+      <li class="nav-section">Inventory</li>
+      <li class="nav-item" data-view="inventory"><span class="ic">📦</span>Products<span class="cursor"></span></li>
+      <li class="nav-item" data-admin="1" data-view="stockmovements"><span class="ic">🔄</span>Stock Movements<span class="cursor"></span></li>
+      <li class="nav-item" data-admin="1" data-view="purchases"><span class="ic">🧾</span>Purchases<span class="cursor"></span></li>
+      <li class="nav-item" data-admin="1" data-view="suppliers"><span class="ic">🚚</span>Suppliers<span class="cursor"></span></li>
+
+      <li class="nav-section">Sales</li>
+      <li class="nav-item" data-staffonly="1" data-view="sales"><span class="ic">🛒</span>Point of Sale<span class="cursor"></span></li>
+      <li class="nav-item" data-admin="1" data-view="history"><span class="ic">📅</span>Sales History<span class="cursor"></span></li>
+
+      <li class="nav-section" data-staffonly="1">Food Costing</li>
+      <li class="nav-item" data-staffonly="1" data-view="cos"><span class="ic">🍽</span>Menu Plan<span class="cursor"></span></li>
+      <li class="nav-item" data-staffonly="1" data-view="recipes"><span class="ic">📖</span>Recipes<span class="cursor"></span></li>
+      <li class="nav-item" data-staffonly="1" data-view="production"><span class="ic">🏭</span>Production<span class="cursor"></span></li>
+
+      <li class="nav-section" data-admin="1">Expenses</li>
+      <li class="nav-item" data-admin="1" data-view="expenses"><span class="ic">🧯</span>Operating Expenses<span class="cursor"></span></li>
+
+      <li class="nav-section" data-admin="1">Reports</li>
+      <li class="nav-item" data-admin="1" data-view="reports"><span class="ic">📊</span>Reports<span class="cursor"></span></li>
+
+      <li class="nav-section" data-admin="1">Settings</li>
+      <li class="nav-item" data-admin="1" data-view="settings"><span class="ic">⚙</span>Settings<span class="cursor"></span></li>
+    </ul>
+    <div class="sidebar-foot">
+      <div class="sf-avatar" id="sfAvatar">?</div>
+      <div class="sf-who">
+        <div class="sf-name" id="sfName">—</div>
+        <div class="sf-mail" id="sfMail">—</div>
+      </div>
+      <button class="sf-switch" id="btnSwitchAdmin" data-staffonly="1" title="Switch to Admin">🔑</button>
+      <button class="sf-out" id="btnSignout" title="Log out">⏻</button>
+    </div>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <main class="content">
+    <div class="topbar">
+      <button class="menu-btn" id="menuBtn" title="Menu">☰</button>
+      <div class="spacer"></div>
+      <button class="top-icon" id="btnMyAccount" title="My account">?</button>
+      <button class="top-icon" title="Alerts">🔔</button>
+      <div class="date-pill"><span class="ic">🗓</span><span id="clock">—</span></div>
+    </div>
+
+    <div class="page-wrap">
+    <div class="page-head">
+      <div class="page-icon" id="pageIcon">🖥</div>
+      <div class="page-title">
+        <h1 id="pageTitle">Dashboard</h1>
+        <p id="pageSub">Overview of all stock</p>
+      </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <section class="view active" id="view-dashboard">
+      <div class="card">
+        <div class="card-head"><div class="ct">Inventory Overview</div></div>
+        <div class="card-body">
+          <div class="stat-grid" id="statGridTop"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="ct">Value Summary</div></div>
+        <div class="card-body">
+          <div class="stat-grid" id="statGridValue"></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:18px;">
+        <div class="card">
+          <div class="card-head"><div class="ct">Low Stock Alerts</div></div>
+          <div class="card-body" id="alertsBox"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="ct">Recent Activity</div></div>
+          <div class="card-body" id="activityBox"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRO -->
+    <!-- INVENTORY -->
+    <section class="view" id="view-inventory">
+      <div class="toolbar">
+        <input class="search search-input" placeholder="Search product..." data-filter="inventory-search"/>
+        <select data-filter="inventory-cat">
+          <option value="all">All Categories</option>
+          <option value="snack">Snacks</option>
+          <option value="drink">Drinks</option>
+          <option value="food">Food</option>
+          <option value="ingredient">Ingredients</option>
+        </select>
+        <select data-filter="inventory-status">
+          <option value="all">All Status</option>
+          <option value="in">In Stock</option>
+          <option value="low">Low Stock</option>
+          <option value="out">Out of Stock</option>
+        </select>
+        <button class="btn primary" id="btnAddInventory">+ Add Product</button>
+        <button class="btn" id="btnProduceBatch">+ Produce Batch</button>
+      </div>
+      <div class="hint" style="padding:0 4px 10px;">
+        Food items drop off this list once their stock hits zero — restock it, or add it again from Menu Plan/Production, and it comes right back. Snacks, drinks and ingredients stay listed at zero so you can restock them here.
+      </div>
+      <div class="card"><div class="card-body" style="padding:0;">
+        <table><thead><tr id="head-inventory">
+          <!-- built by renderInventory: the sell columns drop out for ingredients -->
+        </tr></thead><tbody id="tbl-inventory"></tbody><tfoot id="foot-inventory"></tfoot></table>
+      </div></div>
+    </section>
+
+    <!-- PURCHASES -->
+    <section class="view" id="view-purchases">
+      <div class="card">
+        <div class="card-head"><div class="ct">New Purchase</div>
+          <div class="hint">Records a delivery, adds it to stock, and updates that product's cost</div>
+        </div>
+        <div class="card-body">
+          <div class="field-row">
+            <div class="field"><label>Supplier</label>
+              <select id="pu-supplier">
+                <option value="">— Select a supplier —</option>
+              </select>
+            </div>
+            <div class="field"><label>Received By</label>
+              <input id="pu-receivedby" placeholder="Name"/></div>
+          </div>
+          <div class="field"><label>Notes <span class="muted">(optional)</span></label>
+            <input id="pu-notes" placeholder="e.g. invoice #, delivery notes"/></div>
+
+          <div class="hint" style="margin:14px 0 8px;font-weight:600;">Add items to this purchase</div>
+          <div class="field-row">
+            <div class="field" style="flex:2;"><label>Product</label>
+              <select id="pu-item"></select></div>
+            <div class="field"><label>Quantity</label>
+              <input id="pu-qty" type="number" min="0" step="any" value="1"/></div>
+            <div class="field"><label>Unit Cost</label>
+              <input id="pu-unitcost" type="number" min="0" step="any" placeholder="0.00"/></div>
+          </div>
+          <button class="btn small" id="btnAddPurchaseLine">+ Add Line</button>
+
+          <div style="margin-top:14px;">
+            <table><thead><tr>
+              <th>Product</th><th>Qty</th><th class="num">Unit Cost</th><th class="num">Total</th><th></th>
+            </tr></thead><tbody id="tbl-purchase-draft"></tbody></table>
+          </div>
+          <div class="modal-foot" style="border-top:1px dashed var(--border);align-items:center;">
+            <span class="hint" style="margin-right:auto;" id="pu-draft-total"></span>
+            <button class="btn ghost small" id="btnClearPurchase">Clear</button>
+            <button class="btn primary" id="btnCompletePurchase">Complete Purchase</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Purchase History</div><div class="hint" id="pu-histcount"></div></div>
+        <div class="card-body" style="padding:0;max-height:420px;overflow-y:auto;">
+          <table><thead><tr>
+            <th>PO #</th><th>Date</th><th>Supplier</th><th>Items</th>
+            <th class="num">Total Cost</th><th>Received By</th><th></th>
+          </tr></thead><tbody id="tbl-purchases"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SUPPLIERS -->
+    <section class="view" id="view-suppliers">
+      <div class="toolbar">
+        <input class="search search-input" placeholder="Search supplier..." data-filter="suppliers-search"/>
+        <button class="btn primary" id="btnAddSupplier">+ Add Supplier</button>
+      </div>
+      <div class="card"><div class="card-body" style="padding:0;">
+        <table><thead><tr>
+          <th>Supplier</th><th>Contact</th><th>Phone</th><th class="num">Products Supplied</th>
+          <th class="num">Total Purchases</th><th>Status</th><th>Actions</th>
+        </tr></thead><tbody id="tbl-suppliers"></tbody></table>
+      </div></div>
+    </section>
+
+    <!-- STOCK MOVEMENTS -->
+    <section class="view" id="view-stockmovements">
+      <div class="card">
+        <div class="card-head"><div class="ct">Stock Movements</div><div class="hint" id="rp-logcount"></div>
+          <button class="btn small" id="btnDownloadLog" style="margin-left:auto;">⬇ Download</button>
+          <button class="btn small danger" id="btnClearLog">Void in Range</button>
+          <button class="btn small ghost" id="btnDeleteAllLog" style="color:var(--red);">Delete All in Range</button>
+        </div>
+        <div class="card-body" style="padding:12px 16px 0;">
+          <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;">
+            <span class="hint">From</span>
+            <input type="date" id="log-from" style="width:auto;"/>
+            <span class="hint">To</span>
+            <input type="date" id="log-to" style="width:auto;"/>
+            <button class="btn ghost small" id="btnLogReset">Reset dates</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0;max-height:560px;overflow-y:auto;">
+          <table><thead><tr>
+            <th>When</th><th>Item</th><th>Direction</th><th>Qty</th><th>Reason</th><th>Value</th><th>By</th><th></th>
+          </tr></thead><tbody id="tbl-log"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SALES -->
+    <section class="view" id="view-sales">
+      <div class="toolbar">
+        <input class="search search-input" placeholder="Search item to sell..." data-filter="sales-search"/>
+        <select data-filter="sales-cat">
+          <option value="all">All Categories</option>
+          <option value="snack">Snacks</option>
+          <option value="drink">Drinks</option>
+          <option value="food">Food</option>
+        </select>
+      </div>
+
+      <div class="sales-layout">
+        <div class="card">
+          <div class="card-head"><div class="ct">Tap to Add</div><div class="hint">Ingredients are not sold directly</div></div>
+          <div class="card-body"><div id="posGrid"></div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><div class="ct">Current Sale</div><div class="hint" id="cartCount">empty</div></div>
+          <div class="card-body" style="padding:0;">
+            <div id="cartBox"></div>
+          </div>
+          <div id="cartTotals"></div>
+          <div style="padding:12px 16px 0;">
+            <div class="field-row">
+              <div class="field"><label>Discount</label>
+                <input id="pos-discount" type="number" min="0" step="any" value="0"/></div>
+              <div class="field"><label>Payment Method</label>
+                <select id="pos-paymethod">
+                  <option value="cash">Cash</option>
+                  <option value="gcash">GCash</option>
+                  <option value="card">Card</option>
+                  <option value="other">Other</option>
+                </select></div>
+            </div>
+            <div class="field-row" id="pos-cash-row">
+              <div class="field"><label>Cash Received</label>
+                <input id="pos-cash" type="number" min="0" step="any" placeholder="0.00"/></div>
+              <div class="field"><label>Change</label>
+                <input id="pos-change" type="text" value="₱0.00" disabled/></div>
+            </div>
+            <div id="pos-gcash-card" class="gcash-card">
+              <div class="gcash-qr-wrap"><div id="pos-qr-code"></div></div>
+              <div class="gcash-amount">Amount Due<br><span id="gcash-amount-val">₱0.00</span></div>
+              <div class="gcash-status" id="gcash-status">
+                <span class="gcash-status-dot"></span> Waiting for payment
+              </div>
+              <button type="button" class="btn primary" id="btnCheckGcashPayment" style="width:100%;margin-top:10px;">Check Payment</button>
+              <div class="hint" style="margin-top:8px;text-align:center;">
+                Scan with the customer's GCash app, then tap Check Payment once you see it go through on your end.
+              </div>
+            </div>
+          </div>
+          <div class="modal-foot" style="border-top:1px dashed var(--border);">
+            <button class="btn ghost small" id="btnClearCart">Clear</button>
+            <button class="btn primary" id="btnCompleteSale">Complete Sale</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section class="view" id="view-history">
+      <div class="toolbar">
+        <select id="hs-mode">
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+        <span class="hint">From</span>
+        <input type="date" id="hs-from" style="width:auto;"/>
+        <span class="hint">To</span>
+        <input type="date" id="hs-to" style="width:auto;"/>
+        <button class="btn ghost small" id="btnHsReset">Reset dates</button>
+        <div style="flex:1;"></div>
+        <button class="btn primary" id="btnDownloadAll">⬇ Download All</button>
+        <button class="btn danger" id="btnClearHistory">Void Records in Range</button>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Today's Sales</div><div class="hint" id="todayCount"></div></div>
+        <div class="card-body" style="padding:0;max-height:340px;overflow-y:auto;">
+          <table><thead><tr id="head-today">
+            <!-- built by renderTodaySales -->
+          </tr></thead><tbody id="tbl-today"></tbody><tfoot id="foot-today"></tfoot></table>
+        </div>
+        <div class="modal-foot" style="border-top:1px dashed var(--border);">
+          <button class="btn small" id="btnDownloadToday">⬇ Download Today's Report</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Transactions</div><div class="hint" id="txn-count"></div>
+          <button class="btn small" id="btnDownloadTransactions" style="margin-left:auto;">⬇ Download</button>
+          <button class="btn small ghost" id="btnDeleteAllTransactions" style="color:var(--red);">Delete All in Range</button>
+        </div>
+        <div class="card-body" style="padding:12px 16px 0;">
+          <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;">
+            <span class="hint">From</span>
+            <input type="date" id="txn-from" style="width:auto;"/>
+            <span class="hint">To</span>
+            <input type="date" id="txn-to" style="width:auto;"/>
+            <button class="btn ghost small" id="btnTxnReset">Reset dates</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0;max-height:420px;overflow-y:auto;">
+          <table><thead><tr>
+            <th>Transaction #</th><th>Date</th><th>Cashier</th><th>Items</th>
+            <th class="num">Subtotal</th><th class="num">Discount</th><th class="num">Total</th>
+            <th>Payment</th><th>Status</th><th></th>
+          </tr></thead><tbody id="tbl-transactions"></tbody></table>
+        </div>
+        <div class="hint" style="padding:10px 16px;">
+          Transactions recorded before this page existed only show in the daily/weekly/monthly totals below, not here.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Plan History</div>
+          <div class="hint">Every plan you have saved</div>
+          <button class="btn small" id="btnDownloadAllPlans" style="margin-left:auto;">⬇ Download All Plans</button>
+        </div>
+        <div class="card-body" style="padding:12px 16px 0;">
+          <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;">
+            <span class="hint">From</span>
+            <input type="date" id="php-from" style="width:auto;"/>
+            <span class="hint">To</span>
+            <input type="date" id="php-to" style="width:auto;"/>
+            <button class="btn ghost small" id="btnPhpReset">Reset dates</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <table><thead><tr>
+            <th>Plan</th><th class="num">Foods</th>
+            <th class="num">Cost</th><th class="num">Served</th>
+            <th class="num">Sales</th><th class="num">Profit</th><th></th>
+          </tr></thead><tbody id="cos-history"></tbody><tfoot id="cos-history-foot"></tfoot></table>
+        </div>
+      </div>
+
+      <div class="cos-summaries">
+        <div class="card">
+          <div class="card-head"><div class="ct">Cost Summary</div></div>
+          <div class="card-body" style="padding:0;"><table><tbody id="cos-sum-cost"></tbody></table></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="ct">Production and Sales Plan</div></div>
+          <div class="card-body" style="padding:0;"><table><tbody id="cos-sum-plan"></tbody></table></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="ct">Expected Profit</div></div>
+          <div class="card-body" style="padding:0;"><table><tbody id="cos-sum-profit"></tbody></table></div>
+        </div>
+      </div>
+
+      <div class="card" id="hs-presets-card">
+        <div class="card-body" style="padding:12px 16px;">
+          <span class="hint" style="margin-right:8px;">Quick pick:</span>
+          <button class="btn ghost small" data-preset="today">Today</button>
+          <button class="btn ghost small" data-preset="7">Last 7 days</button>
+          <button class="btn ghost small" data-preset="30">Last 30 days</button>
+          <button class="btn ghost small" data-preset="month">This month</button>
+          <button class="btn ghost small" data-preset="lastmonth">Last month</button>
+          <button class="btn ghost small" data-preset="all">All time</button>
+        </div>
+      </div>
+
+      <div class="card" id="hs-capacity" style="display:none;padding:14px 18px;border-color:var(--yellow);
+           background:rgba(197,140,0,.06);font-size:11px;color:var(--dim);line-height:1.6;"></div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Sales History</div><div class="hint" id="hs-note"></div></div>
+        <div class="card-body" style="padding:0;">
+          <table><thead><tr>
+            <th>Period</th><th>Sales</th><th>Units</th><th>Revenue</th><th>Cost</th><th>Profit</th><th>Margin</th><th></th>
+          </tr></thead><tbody id="tbl-history"></tbody><tfoot id="foot-history"></tfoot></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- COS — COST OF SALES PLANNING -->
+    <section class="view" id="view-cos">
+      <div class="toolbar">
+        <span class="hint">Plan for</span>
+        <select id="cos-plan-pick" style="width:auto;"></select>
+        <button class="btn" id="btnCosNewPlan">+ New Plan</button>
+        <button class="btn primary" id="btnCosAddFood">+ Add Food</button>
+        <div style="flex:1;"></div>
+        <button class="btn danger" id="btnCosDeletePlan">Delete Plan</button>
+        <button class="btn" id="btnCosExport">⬇ Export Program</button>
+      </div>
+
+      <div class="card" id="cos-empty" style="display:none;">
+        <div class="card-head"><div class="ct">Start a Plan</div>
+          <div class="hint">Name it and pick the day before adding foods</div></div>
+        <div class="card-body">
+          <div class="field-row">
+            <div class="field"><label>Plan name</label>
+              <input type="text" id="cos-new-name" placeholder="e.g. Monday Menu"/></div>
+            <div class="field"><label>Plan date</label><input type="date" id="cos-new-date"/></div>
+            <div class="field"><button class="btn primary" id="btnCosCreate">Create Plan</button></div>
+          </div>
+          <p class="hint" style="margin-top:10px;">
+            Foods go inside the plan for that date, each with its own
+            ingredient list.</p>
+        </div>
+      </div>
+
+      <div id="cos-main">
+      <div class="card">
+        <div class="card-head">
+          <input class="cos-plan-name" id="cos-plan-name" placeholder="Plan name"/>
+          <div class="hint" id="cos-title">—</div></div>
+        <div class="card-body">
+          <div class="cos-flow">
+            <div class="cos-stage s2"><div class="cs-name">Purchase</div><div class="cs-big" id="cs-cost">₱0</div><div class="cs-sub">ingredients, all foods</div></div>
+            <div class="cos-stage s3"><div class="cs-name">Prepare</div><div class="cs-big" id="cs-lines">0</div><div class="cs-sub">foods planned</div></div>
+            <div class="cos-stage s4"><div class="cs-name">Produce</div><div class="cs-big" id="cs-servings">0</div><div class="cs-sub">total servings</div></div>
+            <div class="cos-stage s5"><div class="cs-name">Sell</div><div class="cs-big" id="cs-price">₱0</div><div class="cs-sub">potential sales</div></div>
+            <div class="cos-stage s6"><div class="cs-name">Evaluate</div><div class="cs-big" id="cs-margin">0%</div><div class="cs-sub">gross profit margin</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- one card per food, each with its own ingredients -->
+      <div id="cos-foods"></div>
+
+
+      </div>
+
+      <datalist id="cos-ing-list"></datalist>
+    </section>
+
+    <!-- RECIPES -->
+    <section class="view" id="view-recipes">
+      <div class="toolbar">
+        <input class="search search-input" placeholder="Search recipe..." data-filter="recipes-search"/>
+        <button class="btn primary" id="btnAddRecipe">+ Add Recipe</button>
+      </div>
+      <div class="card"><div class="card-body" style="padding:0;">
+        <table><thead><tr>
+          <th>Recipe</th><th>Category</th><th>Servings</th>
+          <th class="num">Cost/Serving</th><th class="num">Selling Price</th>
+          <th class="num">Profit/Serving</th><th class="num">Margin</th>
+          <th>Linked Item</th><th>Actions</th>
+        </tr></thead><tbody id="tbl-recipes"></tbody></table>
+      </div></div>
+    </section>
+
+    <!-- PRODUCTION -->
+    <section class="view" id="view-production">
+      <div class="card">
+        <div class="card-head"><div class="ct">New Production</div>
+          <div class="hint">Cooks a recipe, deducts ingredients, and stocks the finished item</div>
+        </div>
+        <div class="card-body">
+          <div class="field-row">
+            <div class="field"><label>Recipe</label>
+              <select id="pr-recipe"></select></div>
+            <div class="field"><label>Quantity to Produce (servings)</label>
+              <input id="pr-qty" type="number" min="0" step="any" value="1"/></div>
+          </div>
+          <div class="field"><label>Produced By</label>
+            <input id="pr-producedby" placeholder="Name"/></div>
+          <div class="hint" id="pr-preview" style="margin:10px 0;"></div>
+          <button class="btn primary" id="btnCompleteProduction">Complete Production</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Production History</div><div class="hint" id="pr-histcount"></div></div>
+        <div class="card-body" style="padding:0;max-height:420px;overflow-y:auto;">
+          <table><thead><tr>
+            <th>Prod #</th><th>Date</th><th>Recipe</th><th class="num">Qty Produced</th>
+            <th class="num">Total Cost</th><th>Produced By</th><th></th>
+          </tr></thead><tbody id="tbl-productions"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- EXPENSES -->
+    <section class="view" id="view-expenses">
+      <div class="toolbar">
+        <input class="search search-input" placeholder="Search description..." data-filter="expenses-search"/>
+        <select data-filter="expenses-cat">
+          <option value="all">All Categories</option>
+          <option>Salaries</option><option>LPG</option><option>Electricity</option>
+          <option>Water</option><option>Rent</option><option>Internet</option>
+          <option>Cleaning Supplies</option><option>Packaging</option>
+          <option>Transportation</option><option>Maintenance</option>
+          <option>Office Supplies</option><option>Other</option>
+        </select>
+        <button class="btn primary" id="btnAddExpense">+ Add Expense</button>
+      </div>
+      <div class="card"><div class="card-body" style="padding:0;">
+        <table><thead><tr>
+          <th>Expense #</th><th>Date</th><th>Category</th><th>Description</th>
+          <th class="num">Amount</th><th>Payment</th><th>Recorded By</th><th>Actions</th>
+        </tr></thead><tbody id="tbl-expenses"></tbody><tfoot id="foot-expenses"></tfoot></table>
+      </div></div>
+
+      <div class="toolbar" data-admin="1">
+        <div style="flex:1;"></div>
+        <button class="btn primary" id="btnDownloadOthers">⬇ Download Report</button>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Staff Directory</div>
+          <div class="hint">Name, position and wage on file — feeds Man Power on Reports</div>
+          <button class="btn small primary" id="btnAddStaff" style="margin-left:auto;">+ Add Staff</button>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <table><thead><tr>
+            <th>Name</th><th>Position</th><th class="num">Wage</th><th class="num">Monthly Cost</th><th></th>
+          </tr></thead><tbody id="tbl-staff"></tbody><tfoot id="foot-staff"></tfoot></table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">LPG Usage</div>
+          <div class="hint">One row per tank — when it started, when it ran out, what it cost</div>
+          <button class="btn small primary" id="btnAddLpg" style="margin-left:auto;">+ Add Record</button>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <table><thead><tr>
+            <th>Date Start</th><th>Date End</th><th class="num">Days Used</th>
+            <th class="num">Price</th><th class="num">Cost / Day</th><th></th>
+          </tr></thead><tbody id="tbl-lpg"></tbody><tfoot id="foot-lpg"></tfoot></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- STUBS -->
+    <section class="view" id="view-reports">
+      <div class="card">
+        <div class="card-head"><div class="ct">Profit &amp; Loss</div>
+          <div class="hint">Revenue, Cost, Gross Profit, Operating Expenses and Net Profit — Products + Food Costing combined, all-time</div>
+          <button class="btn small primary" id="btnDetailedPL" style="margin-left:auto;">🔍 View Detailed Report</button>
+        </div>
+        <div class="card-body">
+          <div class="stat-grid" id="statGridProfitTotal"></div>
+          <div class="hint" style="margin-top:12px;line-height:1.6;">
+            Net Profit = Gross Profit − every expense logged on the Operating Expenses page.
+            If staff wages should count toward it, log them there too as a "Salaries" expense —
+            the wage field on the Staff Directory only feeds the separate Man Power card below,
+            it is not automatically included here. Waste is shown separately and is
+            <strong>not</strong> subtracted from either profit figure.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Man Power</div>
+          <div class="hint">Labor cost, and what Gross Profit looks like after paying it</div>
+        </div>
+        <div class="card-body">
+          <div class="stat-grid" id="statGridManpower"></div>
+          <div class="hint" style="margin-top:12px;">
+            This only accounts for labor — not rent, utilities or other operating expenses.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Product Profitability</div>
+          <div class="hint">Every Snack, Drink and Ingredient — all-time sales</div>
+        </div>
+        <div class="card-body" style="padding:0;max-height:420px;overflow-y:auto;">
+          <table><thead><tr>
+            <th>Item</th><th>Category</th>
+            <th class="num">Revenue</th><th class="num">Cost</th>
+            <th class="num">Gross Profit</th><th class="num">Waste</th><th class="num">Margin</th>
+          </tr></thead><tbody id="tbl-profit-products"></tbody><tfoot id="foot-profit-products"></tfoot></table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Food Costing Profitability</div>
+          <div class="hint">Every food across every saved plan — Gross Profit if fully sold, vs. actual based on servings sold</div>
+        </div>
+        <div class="card-body" style="padding:0;max-height:420px;overflow-y:auto;">
+          <table><thead><tr>
+            <th>Plan</th><th>Food</th>
+            <th class="num">Revenue</th><th class="num">Cost</th>
+            <th class="num">Gross Profit</th><th class="num">Actual Profit</th><th class="num">Margin</th>
+          </tr></thead><tbody id="tbl-profit-food"></tbody><tfoot id="foot-profit-food"></tfoot></table>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <select id="rp-range">
+          <option value="1">Today</option>
+          <option value="7" selected>Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="0">All time</option>
+        </select>
+        <select id="rp-cat">
+          <option value="all">All Categories</option>
+          <option value="snack">Snacks</option>
+          <option value="drink">Drinks</option>
+          <option value="food">Food</option>
+          <option value="ingredient">Ingredients</option>
+        </select>
+        <span class="hint">From</span>
+        <input type="date" id="rp-from" style="width:auto;"/>
+        <span class="hint">To</span>
+        <input type="date" id="rp-to" style="width:auto;"/>
+        <button class="btn ghost small" id="btnRpReset">Reset dates</button>
+        <div style="flex:1;"></div>
+        <button class="btn" id="btnAutoDelete">🗑 Auto-delete</button>
+        <button class="btn primary" id="btnExportExcel">⬇ Export to Excel</button>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Sales Summary</div><div class="hint" id="rp-period"></div></div>
+        <div class="card-body">
+          <div class="stat-grid" id="rp-money"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Best Sellers</div><div class="hint">Ranked by profit earned</div></div>
+        <div class="card-body" style="padding:0;">
+          <table><thead><tr>
+            <th>Item</th><th>Category</th><th>Qty Sold</th><th>Revenue</th><th>Cost</th><th>Profit</th><th>Margin</th>
+          </tr></thead><tbody id="tbl-best"></tbody><tfoot id="foot-best"></tfoot></table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">By Category</div></div>
+        <div class="card-body" style="padding:0;">
+          <table><thead><tr>
+            <th>Category</th><th>Qty Sold</th><th>Revenue</th><th>Cost</th><th>Profit</th><th>Share of Revenue</th>
+          </tr></thead><tbody id="tbl-bycat"></tbody></table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Waste &amp; Losses</div><div class="hint">Spoiled stock is money gone</div></div>
+        <div class="card-body" style="padding:0;">
+          <table><thead><tr>
+            <th>Item</th><th>Qty Lost</th><th>Value Lost</th><th>Last Occurrence</th>
+          </tr></thead><tbody id="tbl-waste"></tbody><tfoot id="foot-waste"></tfoot></table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Restock List</div><div class="hint">What to buy on the next supply run</div></div>
+        <div class="card-body" style="padding:0;">
+          <table><thead><tr>
+            <th>Item</th><th>Category</th><th>Left</th><th>Alert At</th><th>Cost/Unit</th><th>Status</th>
+          </tr></thead><tbody id="tbl-restock"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="view" id="view-settings">
+      <div class="card">
+        <div class="card-head"><div class="ct">GCash QR Code</div>
+          <div class="hint">Shown on Point of Sale when GCash is selected</div></div>
+        <div class="card-body">
+          <div class="hint" style="margin-bottom:14px;">
+            Upload your business's real GCash "Scan to Pay" QR code and it replaces the
+            placeholder shown at checkout — customers scan the actual code, and staff still
+            confirm the payment came through before completing the sale.
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div id="settings-qr-preview-wrap" style="width:120px;height:120px;border-radius:12px;border:1px solid var(--border);background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+              <img id="settings-qr-preview" style="width:100%;height:100%;object-fit:contain;display:none;"/>
+              <span id="settings-qr-placeholder" class="hint">No QR uploaded</span>
+            </div>
+            <div>
+              <input type="file" id="settings-qr-file" accept="image/*"/>
+              <div style="margin-top:8px;">
+                <button class="btn small ghost" id="settings-qr-remove" style="color:var(--red);display:none;">Remove QR Code</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Full System Backup</div>
+          <div class="hint">Everything, in one file</div></div>
+        <div class="card-body">
+          <div class="hint" style="margin-bottom:14px;">
+            One file with every report and record in the system, each as its own
+            sheet (or its own labeled section if saved as CSV): Summary, <strong>Transactions</strong>
+            (one row per completed sale — subtotal, discount, total, payment method),
+            <strong>Sales Detail</strong> (every individual line, not added together), Best Sellers,
+            Waste &amp; Losses, the full Movement Log, current Inventory, the Restock
+            List, Suppliers, <strong>Purchases</strong> (every purchase, one row per line
+            item), <strong>Recipes</strong>, <strong>Production</strong> (every batch, one row per
+            ingredient used), <strong>Operating Expenses</strong>, Staff Directory,
+            <strong>Man Power</strong> (labor cost, Gross Profit after paying it, and real
+            Net Profit after Operating Expenses), LPG Usage, Product / Food Costing
+            Profitability, and <strong>Food Costing Detail</strong> (every ingredient in every
+            food, not summed into a total). Account passwords are never included.
+          </div>
+          <button class="btn primary" id="btnDownloadEverything">⬇ Download Everything</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">History Retention</div>
+          <div class="hint">Admin only</div></div>
+        <div class="card-body">
+          <div class="hint" style="margin-bottom:14px;">
+            Sales and stock records build up over time. Set a limit and anything
+            older is deleted automatically when the system starts.
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Delete records older than</label>
+              <select id="ret-days">
+                <option value="0">Keep forever</option>
+                <option value="30">30 days</option>
+                <option value="60">60 days</option>
+                <option value="90">90 days (3 months)</option>
+                <option value="180">180 days (6 months)</option>
+                <option value="365">365 days (1 year)</option>
+                <option value="730">730 days (2 years)</option>
+              </select></div>
+            <div class="field" style="max-width:170px;">
+              <label>&nbsp;</label>
+              <button class="btn primary" id="btnSaveRetention" style="width:100%;">Save setting</button></div>
+          </div>
+          <div id="ret-note" class="hint"></div>
+        </div>
+        <div class="modal-foot" style="border-top:1px solid var(--border-soft);justify-content:space-between;">
+          <span class="hint" id="ret-last"></span>
+          <button class="btn danger" id="btnPurgeNow">Delete old records now</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">User Accounts</div></div>
+        <div class="card-body" style="padding:0;">
+          <table><thead><tr>
+            <th>Name</th><th>Username</th><th>Role</th><th>Added</th><th></th>
+          </tr></thead><tbody id="tbl-users"></tbody></table>
+        </div>
+        <div class="modal-foot" style="border-top:1px dashed var(--border);">
+          <button class="btn small primary" id="btnAddUser">+ Add User</button>
+        </div>
+      </div>
+    </section>
+
+    </div>
+
+    <div class="app-foot">
+      <span>© 2026 FoodTrack. All rights reserved.</span>
+      <span>Good Food. Better Business. 🌿</span>
+    </div>
+  </main>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal">
+    <div class="modal-head">
+      <div class="mt" id="modalTitle">Title</div>
+      <div class="modal-close" id="modalClose">✕</div>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot" id="modalFoot"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Plain scripts, not modules: ES modules are blocked on file:// URLs,
+     and this has to work when you just double-click index.html.
+     They share one global scope, so the order below matters. -->
+<script>window.APP_BUILD = "admin";</script>
+<script src="js/core/01-config.js"></script>
+<script src="js/core/02-state.js"></script>
+<script src="js/core/03-storage.js"></script>
+<script src="js/utils/04-format.js"></script>
+<script src="js/utils/05-ui.js"></script>
+<script src="js/auth/06-accounts.js"></script>
+<script src="js/auth/07-login.js"></script>
+<script src="js/auth/08-recovery.js"></script>
+<script src="js/auth/09-otp.js"></script>
+<script src="js/nav/10-nav-dashboard.js"></script>
+<script src="js/inventory/11-inventory.js"></script>
+<script src="js/procurement/12-suppliers.js"></script>
+<script src="js/procurement/13-purchases.js"></script>
+<script src="js/menu-plan/14-recipes.js"></script>
+<script src="js/menu-plan/15-production.js"></script>
+<script src="js/expenses/16-operating-expenses.js"></script>
+<script src="js/inventory/17-modals.js"></script>
+<script src="js/pos/18-pos.js"></script>
+<script src="js/reports/19-history-retention-staff-reports.js"></script>
+<script src="js/reports/20-reports.js"></script>
+<script src="js/menu-plan/21-cos.js"></script>
+<script src="js/core/22-boot.js"></script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(err=>console.warn('[sw] registration failed:', err));
+  });
+}
+</script>
+</body>
+</html>
+<h1>FoodTrack</h1>
