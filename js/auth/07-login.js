@@ -1,15 +1,16 @@
 /* ===== js/auth/07-login.js =====
    Sign in / Sign up screen wiring (the first-run Setup form lives here too).
-   (Lines 848-1129 of the original single-file build.) */
+   Now backed by Supabase Auth — see js/auth/06-accounts.js for what
+   changed and why. */
 
-/* 07-login.js — Sign in / Sign up screen wiring (the first-run Setup form lives here too). */
+async function showAuthScreen(){
+  let noAccounts = true;
+  const { data, error } = await sb.rpc('accounts_exist');
+  if(!error) noAccounts = !data;
 
-function showAuthScreen(){
-  const noAccounts = !state.users || state.users.length === 0;
   document.getElementById('setupPane').style.display = noAccounts ? 'block' : 'none';
   document.getElementById('loginPane').style.display = noAccounts ? 'none'  : 'block';
   showForgot(false);
-  showOtpPane(false);
   document.getElementById('authScreen').style.display = 'flex';
   document.getElementById('app').style.visibility = 'hidden';
   setTimeout(()=>{
@@ -25,97 +26,28 @@ function showAuthScreen(){
    compiled from this same source again — it no longer blocks login.) */
 const APP_BUILD = window.APP_BUILD || 'admin';
 
-function enterApp(user){
-  currentUser = user;
+/* `profile` is a row from the `profiles` table: {id, username, name, role, email, created_at}. */
+async function enterApp(profile){
+  currentUser = profile;
+  await refreshProfiles();
 
   // account block at the foot of the sidebar
-  document.getElementById('sfName').textContent   = user.name;
-  document.getElementById('sfMail').textContent   = user.email || (user.role === 'admin' ? 'Administrator' : 'Staff');
-  document.getElementById('sfAvatar').textContent = user.name.trim().slice(0,2).toUpperCase();
+  document.getElementById('sfName').textContent   = profile.name;
+  document.getElementById('sfMail').textContent   = profile.email || (profile.role === 'admin' ? 'Administrator' : 'Staff');
+  document.getElementById('sfAvatar').textContent = profile.name.trim().slice(0,2).toUpperCase();
 
   applyRolePermissions();
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('app').style.visibility = 'visible';
 
-  navigate(user.role === 'admin' ? 'dashboard' : 'sales');   // staff open on the till
-  toast(`Welcome, ${user.name.split(' ')[0]}`);
-
-  // Missing either recovery route -> offer to set it up now
-  if(!user.email || !user.q || !user.qHash) setTimeout(promptSecurityQuestion, 700);
+  navigate(profile.role === 'admin' ? 'dashboard' : 'sales');   // staff open on the till
+  toast(`Welcome, ${profile.name.split(' ')[0]}`);
 }
 
-/* Accounts made before recovery questions existed have no way to reset
-   themselves. Ask at sign-in until one is set, so nobody gets stranded. */
-
-function promptSecurityQuestion(){
-  const soleAdmin = currentUser.role==='admin' &&
-                    state.users.filter(u=>u.role==='admin').length === 1;
-  const needEmail = !currentUser.email;
-  const needQ     = !currentUser.q || !currentUser.qHash;
-
-  openModal('Set up account recovery', `
-    <div class="hint" style="margin-bottom:16px;color:var(--yellow);line-height:1.6;">
-      This account can't reset its own password yet.
-      ${soleAdmin
-        ? 'You are the only Admin, so if you forget it, no one can unlock this account for you.'
-        : 'Without this, only another Admin can unlock it for you.'}
-    </div>
-    ${needEmail ? `
-    <div class="field"><label>Gmail address <span class="muted">(gets you a one-time code)</span></label>
-      <input id="sq-email" type="email" placeholder="you@gmail.com"/></div>
-    <div class="hint" style="margin:-4px 0 16px;">Adding this lets you choose "Email me a code" when resetting.</div>
-    ` : ''}
-    <div class="field"><label>Security question</label><select id="sq-q"></select></div>
-    <div class="field" id="sq-qcustom-wrap" style="display:none;"><label>Your own question</label>
-      <input id="sq-qcustom" placeholder="e.g. What street did I grow up on?"/></div>
-    <div class="field"><label>Answer</label>
-      <input id="sq-a" placeholder="Not case sensitive"/></div>
-    <div class="hint" style="margin-top:12px;">
-      Pick something that isn't on your Facebook. The answer is hashed, not stored as text.
-    </div>
-  `, `<button class="btn ghost" id="sq-later">Not now</button>
-      <button class="btn primary" id="sq-save">Save question</button>`);
-
-  fillQuestionSelect('sq-q','sq-qcustom-wrap');
-  if(currentUser.q && SECURITY_QUESTIONS.includes(currentUser.q))
-    document.getElementById('sq-q').value = currentUser.q;
-  document.getElementById('sq-later').addEventListener('click', ()=>{
-    closeModal();
-    toast('You can set one any time from My Account', true);
-  });
-  document.getElementById('sq-save').addEventListener('click', async ()=>{
-    const emEl = document.getElementById('sq-email');
-    const em = emEl ? emEl.value.trim().toLowerCase() : '';
-    const q = chosenQuestion('sq-q','sq-qcustom');
-    const a = document.getElementById('sq-a').value;
-    const done = [];
-
-    if(em){
-      if(!isGmail(em)) return toast('Use a Gmail address ending in @gmail.com', true);
-      if(state.users.some(u => u.id !== currentUser.id && (u.email||'').toLowerCase() === em))
-        return toast('Another account already uses that Gmail', true);
-      currentUser.email = em;
-      done.push('Gmail');
-    }
-    if(a.trim()){
-      if(!q) return toast('Write your security question', true);
-      currentUser.q = q;
-      currentUser.qSalt = makeSalt();
-      currentUser.qHash = await hashPassword(normalizeAnswer(a), currentUser.qSalt);
-      done.push('security question');
-    }
-    if(!done.length) return toast('Add a Gmail address or answer a question', true);
-
-    await saveState();
-    renderUsers();
-    closeModal();
-    toast(`Saved ${done.join(' and ')} — you can reset your own password now`);
-  });
-}
-
-function signOut(){
+async function signOut(){
+  await sb.auth.signOut();
   currentUser = null;
-  ['li-user','li-pass','su-name','su-user','su-pass','su-pass2'].forEach(id=>{
+  ['li-user','li-pass','su-name','su-user','su-pass','su-pass2','fp-email'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.value='';
   });
   authMsg('loginMsg',''); authMsg('signupMsg','');
@@ -123,18 +55,22 @@ function signOut(){
   showAuthScreen();
 }
 
-/* Staff can move stock but not change the catalogue or open Settings. */
-
 function switchAuthTab(which){
   const signin = which === 'signin';
   document.getElementById('tabSignin').classList.toggle('active', signin);
   document.getElementById('tabSignup').classList.toggle('active', !signin);
   document.getElementById('signinForm').style.display = signin ? 'block' : 'none';
   document.getElementById('signupForm').style.display = signin ? 'none'  : 'block';
+  showForgot(false);
+}
+
+function showForgot(on){
+  document.getElementById('loginPane').style.display = on ? 'none' : 'block';
+  document.getElementById('forgotPane').style.display = on ? 'block' : 'none';
+  authMsg('fpMsg','');
 }
 
 document.getElementById('tabSignin').addEventListener('click', ()=>switchAuthTab('signin'));
-
 document.getElementById('tabSignup').addEventListener('click', ()=>switchAuthTab('signup'));
 
 /* ---------- First-run setup ---------- */
@@ -145,17 +81,27 @@ document.getElementById('btnSetup').addEventListener('click', async ()=>{
   const pass  = document.getElementById('st-pass').value;
   const pass2 = document.getElementById('st-pass2').value;
 
-  const q = chosenQuestion('st-q','st-qcustom');
-  const a = document.getElementById('st-a').value;
-
   const err = validateNewAccount(name, user, pass, pass2);
   if(err) return authMsg('setupMsg', err);
-  if(!q) return authMsg('setupMsg', 'Write your security question.');
-  if(!a.trim()) return authMsg('setupMsg', 'Answer your security question — it is the only way to reset this password.');
 
-  const created = await createUser(name, user, pass, 'admin', q, a);
+  const { data: available } = await sb.rpc('username_available', { p_username: user });
+  if(available === false) return authMsg('setupMsg', 'That username is already taken.');
+
+  const { data, error } = await sb.auth.signUp({
+    email: name, password: pass,
+    options: { data: { username: user, name: user } }
+  });
+  if(error) return authMsg('setupMsg', error.message);
+
+  if(!data.session){
+    authMsg('setupMsg', 'Account created — check your Gmail to confirm it, then sign in.', true);
+    switchAuthTab('signin');
+    return;
+  }
+
+  const { data: profile } = await sb.from('profiles').select('*').eq('id', data.user.id).single();
   authMsg('setupMsg', 'Account created.', true);
-  enterApp(created);
+  enterApp(profile);
 });
 
 /* ---------- Sign in ---------- */
@@ -167,16 +113,22 @@ async function doLogin(){
   const password = document.getElementById('li-pass').value;
   if(!username || !password) return authMsg('loginMsg', 'Enter your username and password.');
 
-  const user = findUser(username);
-  // Same message either way, so it does not reveal which usernames exist
-  if(!user) return authMsg('loginMsg', 'Incorrect username or password.');
+  // Same message on every failure below, so it never reveals which
+  // usernames exist.
+  const fail = () => authMsg('loginMsg', 'Incorrect username or password.');
 
-  const attempt = await hashPassword(password, user.salt);
-  if(attempt !== user.hash) return authMsg('loginMsg', 'Incorrect username or password.');
+  const { data: email } = await sb.rpc('email_for_username', { p_username: username });
+  if(!email) return fail();
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error) return fail();
+
+  const { data: profile } = await sb.from('profiles').select('*').eq('id', data.user.id).single();
+  if(!profile) return fail();
 
   authMsg('loginMsg','');
   document.getElementById('li-pass').value = '';
-  enterApp(user);
+  enterApp(profile);
 }
 
 /* ---------- Sign up ---------- */
@@ -187,27 +139,49 @@ document.getElementById('btnSignup').addEventListener('click', async ()=>{
   const pass  = document.getElementById('su-pass').value;
   const pass2 = document.getElementById('su-pass2').value;
 
-  const q = chosenQuestion('su-q','su-qcustom');
-  const a = document.getElementById('su-a').value;
-
   const err = validateNewAccount(name, user, pass, pass2);
   if(err) return authMsg('signupMsg', err);
-  if(!q) return authMsg('signupMsg', 'Write your security question.');
-  if(!a.trim()) return authMsg('signupMsg', 'Answer your security question — it is how you reset a forgotten password.');
 
-  /* TEMP — OTP verification is switched off. Signup used to require a
-     one-time code (via startOtp, still defined below and unused) before
-     the account was created. To turn verification back on, wrap the
-     three lines below back inside:
-       await startOtp({ email:name, purpose:'Verify your new account',
-         subtitle:`Enter the code sent to ${name} to finish creating your account.`,
-         onVerified: async ()=>{ ...these lines... } }); */
-  await createUser(name, user, pass, 'staff', q, a);
+  const { data: available } = await sb.rpc('username_available', { p_username: user });
+  if(available === false) return authMsg('signupMsg', 'That username is already taken.');
+
+  const { data, error } = await sb.auth.signUp({
+    email: name, password: pass,
+    options: { data: { username: user, name: user } }
+  });
+  if(error) return authMsg('signupMsg', error.message);
+
+  ['su-name','su-user','su-pass','su-pass2'].forEach(id=>document.getElementById(id).value='');
+
+  if(!data.session){
+    authMsg('signupMsg', 'Account created — check your Gmail to confirm it, then sign in.', true);
+    switchAuthTab('signin');
+    return;
+  }
   switchAuthTab('signin');
   document.getElementById('li-user').value = user;
   authMsg('loginMsg', 'Account created — you can sign in now.', true);
-  ['su-name','su-user','su-pass','su-pass2','su-a','su-qcustom'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('li-pass').focus();
+});
+
+/* ---------- Forgot password ----------
+   A real email now, via Supabase Auth's own reset flow — the link opens
+   reset-password.html, which is the only place a new password gets set. */
+
+document.getElementById('btnForgot').addEventListener('click', ()=>showForgot(true));
+document.getElementById('fpBack').addEventListener('click', ()=>showForgot(false));
+
+document.getElementById('fpSend').addEventListener('click', async ()=>{
+  const email = document.getElementById('fp-email').value.trim();
+  if(!email || !isGmail(email)) return authMsg('fpMsg', 'Use a Gmail address ending in @gmail.com.');
+
+  const redirectTo = new URL('reset-password.html', window.location.href).toString();
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+  if(error) return authMsg('fpMsg', error.message);
+
+  // Same message whether or not that email is actually on file, so this
+  // never reveals which Gmail addresses have accounts.
+  authMsg('fpMsg', 'If that Gmail address has an account, a reset link is on its way.', true);
 });
 
 /* Enter key submits whichever form is on screen */
@@ -216,11 +190,8 @@ document.getElementById('authScreen').addEventListener('keydown', e=>{
   if(e.key !== 'Enter') return;
   if(document.getElementById('setupPane').style.display !== 'none')
     return document.getElementById('btnSetup').click();
-  if(document.getElementById('forgotPane').style.display !== 'none'){
-    if(document.getElementById('fpStep1').style.display !== 'none') return document.getElementById('fpNext1').click();
-    if(document.getElementById('fpStep2').style.display !== 'none') return document.getElementById('fpNext2').click();
-    return document.getElementById('fpSave').click();
-  }
+  if(document.getElementById('forgotPane').style.display !== 'none')
+    return document.getElementById('fpSend').click();
   if(document.getElementById('signinForm').style.display !== 'none')
     return document.getElementById('btnLogin').click();
   document.getElementById('btnSignup').click();
@@ -235,10 +206,11 @@ document.getElementById('btnSignout').addEventListener('click', ()=>{
 });
 
 /* ---------- Switch to Admin (Staff only) ----------
-   Not a shortcut around the login screen — it runs the exact same
-   username/password check as Sign In, and only accepts an account
-   that is actually an Admin. There is no "switch back": going back to
-   the Staff account means signing in as that account again. */
+   Not a shortcut around the login screen — it looks up the target
+   account's role first (any signed-in user can read the profiles table),
+   only proceeds if it's actually an Admin, and only then runs the same
+   sign-in Supabase does for everyone else. There is no "switch back":
+   going back to the Staff account means signing in as that account again. */
 document.getElementById('btnSwitchAdmin').addEventListener('click', ()=>{
   if(!currentUser) return;
   const body = `
@@ -266,20 +238,19 @@ document.getElementById('btnSwitchAdmin').addEventListener('click', ()=>{
 
     if(!username || !password) return fail();
 
-    const user = findUser(username);
-    if(!user) return fail();
+    const { data: target } = await sb.from('profiles')
+      .select('id,email,role').eq('username', username.toLowerCase()).maybeSingle();
+    if(!target || target.role !== 'admin' || !target.email) return fail();
 
-    const attempt = await hashPassword(password, user.salt);
-    if(attempt !== user.hash) return fail();
-    if(user.role !== 'admin') return fail();
+    const { data, error } = await sb.auth.signInWithPassword({ email: target.email, password });
+    if(error) return fail();
 
+    const { data: profile } = await sb.from('profiles').select('*').eq('id', data.user.id).single();
     closeModal();
-    enterApp(user);
-    toast(`Switched to ${user.name}`);
+    enterApp(profile);
+    toast(`Switched to ${profile.name}`);
   }
 
   document.getElementById('sw-go').addEventListener('click', trySwitch);
   document.getElementById('sw-pass').addEventListener('keydown', e=>{ if(e.key==='Enter') trySwitch(); });
 });
-
-/* ---------- Accounts table in Settings ---------- */

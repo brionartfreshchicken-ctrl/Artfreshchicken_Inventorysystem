@@ -9,49 +9,32 @@ document.getElementById('app').addEventListener('click', async e=>{
   if(!btn) return;
   if(!isAdmin()) return toast('Admins only', true);
 
-  const u = state.users.find(x=>x.id === Number(btn.dataset.uid));
+  const u = profilesCache.find(x=>x.id === btn.dataset.uid);
   if(!u) return;
 
   if(btn.dataset.uact === 'role'){
-    // Never allow the last admin to be demoted — you would lock yourself out
-    if(u.role==='admin' && state.users.filter(x=>x.role==='admin').length <= 1)
-      return toast('At least one Admin must remain', true);
-    u.role = u.role === 'admin' ? 'staff' : 'admin';
-    await saveState(); renderUsers();
-    toast(`${u.name} is now ${u.role==='admin'?'an Admin':'Staff'}`);
-  }
-
-  if(btn.dataset.uact === 'pass') openPasswordModal(u);
-
-  if(btn.dataset.uact === 'mail'){
-    openModal(`Gmail for ${u.name}`, `
-      <div class="field"><label>Gmail address</label>
-        <input id="ue-mail" type="email" placeholder="them@gmail.com" value="${escapeHtml(u.email||'')}"/></div>
-      <div class="hint" style="margin-top:10px;">Lets this account receive a one-time code when resetting a password. Leave blank to remove.</div>
-    `, `<button class="btn ghost" id="ue-cancel">Cancel</button>
-        <button class="btn primary" id="ue-save">Save</button>`);
-    document.getElementById('ue-cancel').addEventListener('click', closeModal);
-    document.getElementById('ue-save').addEventListener('click', async ()=>{
-      const em = document.getElementById('ue-mail').value.trim().toLowerCase();
-      if(em && !isGmail(em)) return toast('Use a Gmail address ending in @gmail.com', true);
-      if(em && state.users.some(x => x.id !== u.id && (x.email||'').toLowerCase() === em))
-        return toast('Another account already uses that Gmail', true);
-      u.email = em;
-      await saveState(); renderUsers(); closeModal();
-      toast(em ? `Gmail set for ${u.name}` : `Gmail removed for ${u.name}`);
-    });
+    const newRole = u.role === 'admin' ? 'staff' : 'admin';
+    const { error } = await sb.from('profiles').update({ role: newRole }).eq('id', u.id);
+    // The last-admin trigger (0001_profiles.sql) blocks this server-side too —
+    // this surfaces that same rule instead of duplicating the count check here.
+    if(error) return toast(error.message.includes('last remaining admin')
+      ? 'At least one Admin must remain' : error.message, true);
+    await refreshProfiles(); renderUsers();
+    toast(`${u.name} is now ${newRole==='admin'?'an Admin':'Staff'}`);
   }
 
   if(btn.dataset.uact === 'del'){
-    if(u.role==='admin' && state.users.filter(x=>x.role==='admin').length <= 1)
-      return toast('At least one Admin must remain', true);
-    confirmAction('Remove account',
-      `<div class="hint">Remove the account for <strong style="color:var(--text)">${escapeHtml(u.name)}</strong>?
-       <br><br>They will no longer be able to sign in. Records they created stay in the log.</div>`,
-      'Remove', async ()=>{
-        state.users = state.users.filter(x=>x.id !== u.id);
-        await saveState(); renderUsers();
-        toast('Account removed');
+    confirmAction('Remove access',
+      `<div class="hint">Remove access for <strong style="color:var(--text)">${escapeHtml(u.name)}</strong>?
+       <br><br>They will no longer be able to use FoodTrack. Records they created stay in the log.
+       Their underlying sign-in still exists in Supabase Auth — fully deleting it (freeing up
+       that Gmail address to sign up again) needs the Supabase dashboard.</div>`,
+      'Remove access', async ()=>{
+        const { error } = await sb.from('profiles').delete().eq('id', u.id);
+        if(error) return toast(error.message.includes('last remaining admin')
+          ? 'At least one Admin must remain' : error.message, true);
+        await refreshProfiles(); renderUsers();
+        toast('Access removed');
       });
   }
 });
@@ -121,11 +104,9 @@ async function init(){
   if(purged) console.info(`[retention] removed ${purged} record(s) past the limit`);
 
   tickClock();
-  fillQuestionSelect('st-q','st-qcustom-wrap');
-  fillQuestionSelect('su-q','su-qcustom-wrap');
   document.getElementById('loading').style.display = 'none';
   // The app stays hidden until someone signs in
-  showAuthScreen();
+  await showAuthScreen();
 }
 
 init();

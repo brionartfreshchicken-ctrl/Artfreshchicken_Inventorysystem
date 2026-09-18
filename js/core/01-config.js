@@ -64,20 +64,10 @@ const pageMeta = {
 };
 
 /* ============================= ACCOUNTS & LOGIN =============================
-   Who is signed in right now. Kept in memory only, so closing or
-   refreshing the page signs you out — the way a shared counter
-   terminal should behave. */
-
-const SECURITY_QUESTIONS = [
-  "What was the name of your first pet?",
-  "What is your mother's maiden name?",
-  "What city were you born in?",
-  "What was the name of your elementary school?",
-  "What is your favourite food?",
-  "What was your first job?"
-];
-
-const CUSTOM_Q = '__custom__';
+   Who is signed in right now (currentUser) is set in js/auth/07-login.js
+   from a Supabase Auth session + profiles row — persistSession is off
+   (see js/core/00-supabase.js), so closing or refreshing the page signs
+   you out, same as before: the way a shared counter terminal should behave. */
 
 // "  Manila " and "manila" should both work
 

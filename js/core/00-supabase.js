@@ -12,4 +12,11 @@ if(!window.SUPABASE_URL || !window.SUPABASE_PUBLISHABLE_KEY){
   throw new Error('Supabase config missing — see js/core/00-config.example.js');
 }
 
-const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_PUBLISHABLE_KEY);
+/* persistSession: false preserves this app's original, deliberate behavior
+   (see the old note in 03-storage.js/06-accounts.js): a shared counter
+   terminal should sign everyone out on refresh/close, not silently resume
+   whoever last used it. detectSessionInUrl stays on so the password-reset
+   link (reset-password.html) and any email-confirmation link still work. */
+const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_PUBLISHABLE_KEY, {
+  auth: { persistSession: false, detectSessionInUrl: true }
+});

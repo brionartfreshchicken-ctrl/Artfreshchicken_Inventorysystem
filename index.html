@@ -40,9 +40,6 @@
       <div class="field"><label>Username</label><input id="st-user" placeholder="maria" autocomplete="username"/></div>
       <div class="field"><label>Password</label><input id="st-pass" type="password" placeholder="At least 6 characters" autocomplete="new-password"/></div>
       <div class="field"><label>Confirm password</label><input id="st-pass2" type="password" placeholder="Type it again" autocomplete="new-password"/></div>
-      <div class="field"><label>Security question</label><select id="st-q"></select></div>
-      <div class="field" id="st-qcustom-wrap" style="display:none;"><label>Your own question</label><input id="st-qcustom" placeholder="e.g. What street did I grow up on?"/></div>
-      <div class="field"><label>Answer</label><input id="st-a" placeholder="Used only if you forget your password"/></div>
       <div class="auth-msg" id="setupMsg"></div>
       <button class="btn primary auth-go" id="btnSetup">Create account &amp; sign in</button>
     </div>
@@ -71,86 +68,20 @@
         <div class="field"><label>Username</label><input id="su-user" placeholder="juan" autocomplete="username"/></div>
         <div class="field"><label>Password</label><input id="su-pass" type="password" placeholder="At least 6 characters" autocomplete="new-password"/></div>
         <div class="field"><label>Confirm password</label><input id="su-pass2" type="password" placeholder="Type it again" autocomplete="new-password"/></div>
-        <div class="field"><label>Security question</label><select id="su-q"></select></div>
-        <div class="field" id="su-qcustom-wrap" style="display:none;"><label>Your own question</label><input id="su-qcustom" placeholder="e.g. What street did I grow up on?"/></div>
-        <div class="field"><label>Answer</label><input id="su-a" placeholder="Used only if you forget your password"/></div>
         <div class="auth-msg" id="signupMsg"></div>
         <button class="btn primary auth-go" id="btnSignup">Create account</button>
       </div>
 
-      <!-- One-time code, used by both signup and reset -->
-      <div id="otpPane" style="display:none;">
-        <div class="auth-title">Enter your code</div>
-        <div class="auth-sub" id="otpSub">We sent a 6-digit code to your Gmail.</div>
-        <div class="field">
-          <label>6-digit code</label>
-          <input id="otp-code" inputmode="numeric" maxlength="6" placeholder="000000"
-                 style="letter-spacing:6px;text-align:center;font-size:19px;"/>
-        </div>
-        <div class="auth-msg" id="otpMsg"></div>
-        <button class="btn primary auth-go" id="otpVerify">Verify code</button>
-        <button class="auth-link" id="otpResend">Resend code</button>
-        <button class="auth-link" id="otpUseQuestion" style="display:none;">Use my security question instead</button>
-        <button class="auth-link" id="otpCancel" style="color:var(--dimmer);">Cancel</button>
-        <div id="otpDemo" style="display:none;margin-top:14px;padding:12px;border:1px dashed var(--yellow);
-             border-radius:8px;background:rgba(197,140,0,.07);font-size:10.5px;color:var(--dim);line-height:1.6;"></div>
-      </div>
-
-      <!-- Password reset, three steps in place -->
+      <!-- Password reset: one field, a real email with a reset link
+           (Supabase Auth's built-in flow — see reset-password.html) -->
       <div id="forgotPane" style="display:none;">
         <div class="auth-title">Reset your password</div>
-        <div class="auth-sub" id="fpSub">Start by telling us which account.</div>
-
-        <div id="fpStep1">
-          <div class="field"><label>Gmail address</label>
-            <input id="fp-user" type="email" placeholder="you@gmail.com" autocomplete="email"/></div>
-          <div class="auth-msg" id="fpMsg1"></div>
-          <button class="btn primary auth-go" id="fpNext1">Send me a code</button>
-        </div>
-
-        <div id="fpPick" style="display:none;">
-          <div class="hint" style="margin-bottom:14px;padding:11px;border:1px dashed var(--yellow);
-               border-radius:8px;background:rgba(197,140,0,.07);line-height:1.6;">
-            No account uses that Gmail yet. Pick your account below and the
-            address gets attached to it once you verify the code.
-          </div>
-          <div class="field"><label>Which account is yours?</label><select id="fp-account"></select></div>
-          <div class="auth-msg" id="fpMsgP"></div>
-          <button class="btn primary auth-go" id="fpPickGo">Continue</button>
-        </div>
-
-        <div id="fpStep2" style="display:none;">
-          <div class="field"><label>Security question</label><div class="fp-question" id="fp-question"></div></div>
-          <div class="field"><label>Your answer</label><input id="fp-answer" placeholder="Not case sensitive"/></div>
-          <div class="auth-msg" id="fpMsg2"></div>
-          <button class="btn primary auth-go" id="fpNext2">Verify answer</button>
-        </div>
-
-        <div id="fpStep3" style="display:none;">
-          <div class="field"><label>New password</label><input id="fp-p1" type="password" placeholder="At least 6 characters"/></div>
-          <div class="field"><label>Confirm new password</label><input id="fp-p2" type="password" placeholder="Type it again"/></div>
-          <div class="auth-msg" id="fpMsg3"></div>
-          <button class="btn primary auth-go" id="fpSave">Set new password</button>
-        </div>
-
+        <div class="auth-sub">Enter the Gmail address on your account and we'll email you a reset link.</div>
+        <div class="field"><label>Gmail address</label>
+          <input id="fp-email" type="email" placeholder="you@gmail.com" autocomplete="email"/></div>
+        <div class="auth-msg" id="fpMsg"></div>
+        <button class="btn primary auth-go" id="fpSend">Send reset link</button>
         <button class="auth-link" id="fpBack">&larr; Back to sign in</button>
-        <button class="auth-link" id="fpStuck" style="color:var(--dimmer);">Completely locked out?</button>
-
-        <div id="fpEmergency" style="display:none;margin-top:14px;padding-top:16px;border-top:1px dashed var(--border);">
-          <div class="auth-title" style="font-size:12px;">Emergency account reset</div>
-          <div class="auth-sub">
-            Use this only if nobody can sign in. It deletes <strong>every user account</strong>
-            and returns you to the first-run setup screen so you can create a new Admin.
-            <br><br>
-            Your inventory, sales history and reports are <strong>not</strong> touched.
-          </div>
-          <div class="field">
-            <label>Type <strong>RESET ACCOUNTS</strong> to confirm</label>
-            <input id="fp-confirm" placeholder="RESET ACCOUNTS"/>
-          </div>
-          <div class="auth-msg" id="fpMsgE"></div>
-          <button class="btn danger auth-go" id="fpWipe">Delete all accounts</button>
-        </div>
       </div>
     </div>
 
@@ -916,14 +847,12 @@
       </div>
 
       <div class="card">
-        <div class="card-head"><div class="ct">User Accounts</div></div>
+        <div class="card-head"><div class="ct">User Accounts</div>
+          <div class="hint">New accounts sign up from the login screen — promote or remove access below.</div></div>
         <div class="card-body" style="padding:0;">
           <table><thead><tr>
             <th>Name</th><th>Username</th><th>Role</th><th>Added</th><th></th>
           </tr></thead><tbody id="tbl-users"></tbody></table>
-        </div>
-        <div class="modal-foot" style="border-top:1px dashed var(--border);">
-          <button class="btn small primary" id="btnAddUser">+ Add User</button>
         </div>
       </div>
     </section>
@@ -953,10 +882,14 @@
 <!-- Plain scripts, not modules: ES modules are blocked on file:// URLs,
      and this has to work when you just double-click index.html.
      They share one global scope, so the order below matters. -->
+
+     
 <script>window.APP_BUILD = "admin";</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/core/00-config.local.js"></script>
 <script src="js/core/00-supabase.js"></script>
+
+<!--Upper is a supa base Connection-->
 <script src="js/core/01-config.js"></script>
 <script src="js/core/02-state.js"></script>
 <script src="js/core/03-storage.js"></script>
@@ -964,8 +897,6 @@
 <script src="js/utils/05-ui.js"></script>
 <script src="js/auth/06-accounts.js"></script>
 <script src="js/auth/07-login.js"></script>
-<script src="js/auth/08-recovery.js"></script>
-<script src="js/auth/09-otp.js"></script>
 <script src="js/nav/10-nav-dashboard.js"></script>
 <script src="js/inventory/11-inventory.js"></script>
 <script src="js/procurement/12-suppliers.js"></script>

@@ -39,7 +39,6 @@ function defaultState(){
     // piece of code that reads them (Setup, Sign Up, Inventory, POS...)
     // assumes they exist, so a truly fresh load crashed immediately.
     items: [],
-    users: [],
     activity: [],
     staffList: [],
     lpgLogs: [],
@@ -49,7 +48,6 @@ function defaultState(){
     nextStaffId: 1,
     nextLpgId: 1,
     nextId: 100,   // new items start here, above the seeded ids
-    nextUserId: 1, // account ids
     nextActivityId: 1000,
     nextSupplierId: 1,
     nextPurchaseId: 1,

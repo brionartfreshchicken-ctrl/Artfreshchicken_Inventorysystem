@@ -100,10 +100,10 @@ async function saveState(){
 
 function migrate(st){
   st.items.forEach(i=>{ if(typeof i.size !== 'string') i.size = ''; });
-  // Data saved before accounts existed has no users list
-  if(!Array.isArray(st.users)) st.users = [];
-  if(typeof st.nextUserId !== 'number')
-    st.nextUserId = st.users.reduce((m,u)=>Math.max(m,u.id),0) + 1;
+  // Accounts moved to Supabase Auth + the profiles table — a leftover
+  // `users` list from an old save is just dropped, never migrated.
+  delete st.users;
+  delete st.nextUserId;
 
   /* Activity logged before reports existed has no reason or prices.
      Mark it 'adjust' so it shows in the log but never counts as benta —
