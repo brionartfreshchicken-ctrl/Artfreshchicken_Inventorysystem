@@ -241,13 +241,15 @@ function openItemModal(mode, presetCategory, item){
 
   document.getElementById('f-cancel').addEventListener('click', closeModal);
 
-  let currentImageData = item && item.image ? item.image : null;
+  let currentImageData = item && item.image ? item.image : null;   // existing URL, a new data: URL, or null
+  let imageChanged = false;
   document.getElementById('f-image-file').addEventListener('change', async e=>{
     const file = e.target.files[0];
     if(!file) return;
     if(!file.type.startsWith('image/')){ toast('Please choose an image file', true); return; }
     try{
       currentImageData = await resizeImageFile(file, 240, 0.7);
+      imageChanged = true;
       const preview = document.getElementById('f-image-preview');
       preview.src = currentImageData;
       preview.style.display = '';
@@ -258,12 +260,13 @@ function openItemModal(mode, presetCategory, item){
   });
   document.getElementById('f-image-remove').addEventListener('click', ()=>{
     currentImageData = null;
+    imageChanged = true;
     document.getElementById('f-image-file').value = '';
     document.getElementById('f-image-preview').style.display = 'none';
     document.getElementById('f-image-remove').style.display = 'none';
   });
 
-  document.getElementById('f-save').addEventListener('click', ()=>{
+  document.getElementById('f-save').addEventListener('click', async ()=>{
     const finalCat = showCatSelect ? document.getElementById('f-cat').value : cat;
     const name = document.getElementById('f-name').value.trim();
     const sizeEl = document.getElementById('f-size');
@@ -295,13 +298,37 @@ function openItemModal(mode, presetCategory, item){
     }
 
     // Saving is the same either way — only the duplicate warning differs
-    const commit = ()=>{
-      if(isEdit){
-        Object.assign(item, {category:finalCat, name, size, stock, unit, cost, selling, threshold, sku, supplierId, maxStock, conv, image: currentImageData});
-        toast('Item updated');
-      }else{
-        state.items.push({id:state.nextId++, category:finalCat, name, size, stock, unit, cost, selling, threshold, sku, supplierId, maxStock, conv, image: currentImageData});
-        toast(size ? `${name} (${size}) added` : 'Item added');
+    const commit = async ()=>{
+      let imagePath = isEdit ? item.imagePath : null;
+      if(imageChanged){
+        const oldPath = isEdit ? item.imagePath : null;
+        if(currentImageData && currentImageData.startsWith('data:')){
+          try{
+            imagePath = await dbUploadImage(currentImageData, `item-${finalCat}`);
+          }catch(err){
+            toast(err.message || 'Could not upload the photo', true);
+            return;
+          }
+        }else{
+          imagePath = null;   // removed
+        }
+        if(oldPath && oldPath !== imagePath) dbDeleteImage(oldPath);
+      }
+
+      const payload = {category:finalCat, name, size, stock, unit, cost, selling, threshold, sku, supplierId, maxStock, conv, imagePath};
+      try{
+        if(isEdit){
+          const updated = await dbUpdateItem(item.id, payload);
+          Object.assign(item, updated);
+          toast('Item updated');
+        }else{
+          const created = await dbInsertItem(payload);
+          state.items.push(created);
+          toast(size ? `${name} (${size}) added` : 'Item added');
+        }
+      }catch(err){
+        toast(err.message || 'Could not save that item', true);
+        return;
       }
       saveState();
       renderAll();
@@ -414,7 +441,7 @@ function openQtyModal(item, direction, allowPickItem, categoryForPick){
   });
   previewQty();
 
-  document.getElementById('f-save').addEventListener('click', ()=>{
+  document.getElementById('f-save').addEventListener('click', async ()=>{
     const target = currentTarget();
     const qty = parseFloat(document.getElementById('f-qty').value);
     const reason = document.getElementById('f-reason').value;
@@ -424,7 +451,15 @@ function openQtyModal(item, direction, allowPickItem, categoryForPick){
     if(reason==='sold' && target.selling==null){
       toast('This item has no selling price, so it cannot be sold', true); return;
     }
-    target.stock = direction==='in' ? target.stock+qty : Math.max(0, target.stock-qty);
+    const newStock = direction==='in' ? target.stock+qty : Math.max(0, target.stock-qty);
+    try{
+      await dbUpdateItemStock(target.id, newStock);
+      await logActivity(target, direction, qty, reason);
+    }catch(err){
+      toast(err.message || 'Could not record that movement', true);
+      return;
+    }
+    target.stock = newStock;
 
     // This item's stock might be one that Menu Plan owns (synced from
     // servings − served — see syncActivePlanFoodsToPOS). If so, adjusting
@@ -445,7 +480,6 @@ function openQtyModal(item, direction, allowPickItem, categoryForPick){
       }
     }
 
-    logActivity(target, direction, qty, reason);
     saveState();
     renderAll();
     closeModal();
@@ -509,7 +543,7 @@ function confirmDelete(item){
   const foot = `<button class="btn ghost" id="f-cancel">Cancel</button><button class="btn danger" id="f-del">Delete</button>`;
   openModal('Delete Item', body, foot);
   document.getElementById('f-cancel').addEventListener('click', closeModal);
-  document.getElementById('f-del').addEventListener('click', ()=>{
+  document.getElementById('f-del').addEventListener('click', async ()=>{
     const box = document.getElementById('del-history');
     const alsoHistory = box && box.checked;
 
@@ -518,8 +552,24 @@ function confirmDelete(item){
       linkedPlan.foods = (linkedPlan.foods||[]).filter(f => f.id !== linkedFood.id);
     }
 
+    try{
+      if(alsoHistory){
+        // Delete each linked record through the same RPC Void/Delete uses
+        // (reverses stock for any that weren't already voided), then the item.
+        for(const a of records) await dbDeleteActivityPermanently(a.id);
+      }
+      await dbDeleteItem(item.id);
+      if(item.imagePath) dbDeleteImage(item.imagePath);
+    }catch(err){
+      toast(err.message || 'Could not delete that item', true);
+      return;
+    }
+
     state.items = state.items.filter(i=>i.id!==item.id);
+    // Records not explicitly deleted survive — the DB's ON DELETE SET NULL
+    // on activity.item_id keeps them, same as "past sales stay on record".
     if(alsoHistory) state.activity = state.activity.filter(a => a.itemId !== item.id);
+    else state.activity.forEach(a => { if(a.itemId === item.id) a.itemId = null; });
 
     saveState();
     renderAll();

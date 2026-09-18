@@ -78,7 +78,7 @@ function openExpenseModal(mode, expense){
     <button class="btn primary" id="f-save">${isEdit?'Save Changes':'Add Expense'}</button>`;
   openModal(isEdit?'Edit Expense':'Add Expense', body, foot);
   document.getElementById('f-cancel').addEventListener('click', closeModal);
-  document.getElementById('f-save').addEventListener('click', ()=>{
+  document.getElementById('f-save').addEventListener('click', async ()=>{
     const dateRaw = document.getElementById('ex-date').value;
     const amount = parseFloat(document.getElementById('ex-amount').value);
     const description = document.getElementById('ex-desc').value.trim();
@@ -98,7 +98,10 @@ function openExpenseModal(mode, expense){
       Object.assign(expense, data);
       toast('Expense updated');
     }else{
-      state.expenses.push({id: state.nextExpenseId++, expenseNumber: nextDocNumber('EXP'), ...data});
+      // Operating Expenses itself isn't migrated to Supabase yet (a later
+      // phase) — this just keeps working now that nextDocNumber() is async.
+      const expenseNumber = await nextDocNumber('EXP');
+      state.expenses.push({id: state.nextExpenseId++, expenseNumber, ...data});
       toast('Expense added');
     }
     saveState();

@@ -10,7 +10,7 @@ async function showAuthScreen(){
 
   document.getElementById('setupPane').style.display = noAccounts ? 'block' : 'none';
   document.getElementById('loginPane').style.display = noAccounts ? 'none'  : 'block';
-  showForgot(false);
+  document.getElementById('forgotPane').style.display = 'none';
   document.getElementById('authScreen').style.display = 'flex';
   document.getElementById('app').style.visibility = 'hidden';
   setTimeout(()=>{
@@ -29,7 +29,7 @@ const APP_BUILD = window.APP_BUILD || 'admin';
 /* `profile` is a row from the `profiles` table: {id, username, name, role, email, created_at}. */
 async function enterApp(profile){
   currentUser = profile;
-  await refreshProfiles();
+  await Promise.all([ refreshProfiles(), hydrateFromSupabase() ]);
 
   // account block at the foot of the sidebar
   document.getElementById('sfName').textContent   = profile.name;

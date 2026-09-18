@@ -1055,7 +1055,14 @@ function applyDeduction(food, plan){
   plan.take.forEach(({item, qty})=>{
     const used = Math.min(qty, item.stock);       // never drive stock negative
     item.stock = Math.round((item.stock - used) * 1000) / 1000;
-    logActivity(item, 'out', used, 'used');
+    // Menu Plan isn't fully migrated to Supabase yet (a later phase), but
+    // leaving this stock change unpersisted would silently revert on the
+    // next reload — fire-and-forget it now rather than restructure every
+    // caller in this file into async just for that.
+    dbUpdateItemStock(item.id, item.stock).catch(err =>
+      toast('Could not save that stock change: ' + err.message, true));
+    logActivity(item, 'out', used, 'used').catch(err =>
+      toast('Could not save that movement: ' + err.message, true));
   });
   food.deductedAt = Date.now();
   food.deducted   = plan.take.map(t => ({name:t.name, qty:t.qty, unit:t.unit}));
@@ -1069,7 +1076,10 @@ function returnDeduction(food){
     const item = ingredientByName(name);
     if(!item) return;
     item.stock = Math.round((item.stock + qty) * 1000) / 1000;
-    logActivity(item, 'in', qty, 'correct_in');
+    dbUpdateItemStock(item.id, item.stock).catch(err =>
+      toast('Could not save that stock change: ' + err.message, true));
+    logActivity(item, 'in', qty, 'correct_in').catch(err =>
+      toast('Could not save that movement: ' + err.message, true));
     n++;
   });
   food.deducted = null;

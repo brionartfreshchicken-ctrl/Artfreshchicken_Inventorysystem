@@ -69,7 +69,7 @@ function openSupplierModal(mode, supplier){
     <button class="btn primary" id="f-save">${isEdit?'Save Changes':'Add Supplier'}</button>`;
   openModal(isEdit?'Edit Supplier':'Add Supplier', body, foot);
   document.getElementById('f-cancel').addEventListener('click', closeModal);
-  document.getElementById('f-save').addEventListener('click', ()=>{
+  document.getElementById('f-save').addEventListener('click', async ()=>{
     const name = document.getElementById('sp-name').value.trim();
     if(!name){ toast('Please enter a supplier name', true); return; }
     const data = {
@@ -81,12 +81,19 @@ function openSupplierModal(mode, supplier){
       status: document.getElementById('sp-status').value,
       notes: document.getElementById('sp-notes').value.trim(),
     };
-    if(isEdit){
-      Object.assign(supplier, data);
-      toast('Supplier updated');
-    }else{
-      state.suppliers.push({id: state.nextSupplierId++, createdAt: Date.now(), ...data});
-      toast('Supplier added');
+    try{
+      if(isEdit){
+        const updated = await dbUpdateSupplier(supplier.id, data);
+        Object.assign(supplier, updated);
+        toast('Supplier updated');
+      }else{
+        const created = await dbInsertSupplier(data);
+        state.suppliers.push(created);
+        toast('Supplier added');
+      }
+    }catch(err){
+      toast(err.message || 'Could not save that supplier', true);
+      return;
     }
     saveState();
     renderAll();
@@ -109,7 +116,13 @@ function confirmDeleteSupplier(supplier){
   const foot = `<button class="btn ghost" id="f-cancel">Cancel</button><button class="btn danger" id="f-del">Delete</button>`;
   openModal('Delete Supplier', body, foot);
   document.getElementById('f-cancel').addEventListener('click', closeModal);
-  document.getElementById('f-del').addEventListener('click', ()=>{
+  document.getElementById('f-del').addEventListener('click', async ()=>{
+    try{
+      await dbDeleteSupplier(supplier.id);
+    }catch(err){
+      toast(err.message || 'Could not delete that supplier', true);
+      return;
+    }
     state.suppliers = state.suppliers.filter(s=>s.id!==supplier.id);
     saveState();
     renderAll();

@@ -73,7 +73,7 @@ function renderProductions(){
   document.getElementById(id).addEventListener('input', computeProductionPreview));
 document.getElementById('pr-recipe').addEventListener('change', computeProductionPreview);
 
-document.getElementById('btnCompleteProduction').addEventListener('click', ()=>{
+document.getElementById('btnCompleteProduction').addEventListener('click', async ()=>{
   const preview = computeProductionPreview();
   if(!preview || !preview.recipe){ toast('Select a recipe and a quantity first', true); return; }
   if(preview.qty <= 0){ toast('Enter a quantity greater than 0', true); return; }
@@ -81,22 +81,34 @@ document.getElementById('btnCompleteProduction').addEventListener('click', ()=>{
   if(preview.short.length){ toast('Not enough ingredients on hand for this quantity', true); return; }
 
   const producedBy = document.getElementById('pr-producedby').value.trim() || (currentUser?currentUser.name:'—');
-  const prodNumber = nextDocNumber('PROD');
+  let prodNumber;
 
-  preview.lines.forEach(l=>{
-    l.item.stock = Math.round((l.item.stock - l.need) * 1000) / 1000;
-    logActivity(l.item, 'out', l.need, 'used', prodNumber);
-  });
+  try{
+    prodNumber = await nextDocNumber('PROD');
 
-  if(preview.recipe.linkedItemId){
-    const linked = byId(preview.recipe.linkedItemId);
-    if(linked){
-      linked.stock += preview.qty;
-      linked.cost = preview.qty>0 ? preview.totalCost/preview.qty : linked.cost;
-      logActivity(linked, 'in', preview.qty, 'produced', prodNumber);
+    for(const l of preview.lines){
+      l.item.stock = Math.round((l.item.stock - l.need) * 1000) / 1000;
+      await dbUpdateItemStock(l.item.id, l.item.stock);
+      await logActivity(l.item, 'out', l.need, 'used', prodNumber);
     }
+
+    if(preview.recipe.linkedItemId){
+      const linked = byId(preview.recipe.linkedItemId);
+      if(linked){
+        linked.stock += preview.qty;
+        linked.cost = preview.qty>0 ? preview.totalCost/preview.qty : linked.cost;
+        await dbUpdateItemStockCost(linked.id, linked.stock, linked.cost);
+        await logActivity(linked, 'in', preview.qty, 'produced', prodNumber);
+      }
+    }
+  }catch(err){
+    toast(err.message || 'Could not record that production', true);
+    return;
   }
 
+  // Productions themselves (the receipt/history record) still live only
+  // locally — moving that to Supabase is a later phase. The stock and
+  // movement-log effects above are already durable either way.
   state.productions.push({
     id: state.nextProductionId++,
     prodNumber,

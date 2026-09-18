@@ -101,7 +101,7 @@ document.getElementById('btnClearPurchase').addEventListener('click', ()=>{
   renderPurchaseDraftTable();
 });
 
-document.getElementById('btnCompletePurchase').addEventListener('click', ()=>{
+document.getElementById('btnCompletePurchase').addEventListener('click', async ()=>{
   const supplierId = document.getElementById('pu-supplier').value;
   const receivedBy = document.getElementById('pu-receivedby').value.trim() || (currentUser?currentUser.name:'—');
   const notes = document.getElementById('pu-notes').value.trim();
@@ -109,34 +109,34 @@ document.getElementById('btnCompletePurchase').addEventListener('click', ()=>{
   if(!supplierId){ toast('Please select a supplier', true); return; }
   if(!purchaseDraft.length){ toast('Add at least one line first', true); return; }
 
-  const poNumber = nextDocNumber('PO');
-  const lines = purchaseDraft.map(l=>({...l}));
-  const totalCost = lines.reduce((t,l)=>t+l.qty*l.unitCost,0);
+  const draft = purchaseDraft.map(l=>({...l}));
 
-  lines.forEach(l=>{
+  // complete_purchase() (0015_storage_and_purchases.sql) does the PO
+  // number, the purchase + lines, and every item's stock/cost + activity
+  // row atomically — see there for why this isn't several client calls.
+  let purchase;
+  try{
+    purchase = await dbCompletePurchase({ supplierId: Number(supplierId), receivedBy, notes, draft });
+  }catch(err){
+    toast(err.message || 'Could not record that purchase', true);
+    return;
+  }
+
+  // Mirror what the server just did, for instant UI feedback without a re-fetch.
+  draft.forEach(l=>{
     const item = byId(l.itemId);
     if(!item) return;
     item.stock += l.qty;
-    item.cost = l.unitCost;   // the price just paid becomes the new cost basis
-    logActivity(item, 'in', l.qty, 'purchase', poNumber);
+    item.cost = l.unitCost;
   });
-
-  state.purchases.push({
-    id: state.nextPurchaseId++,
-    poNumber,
-    supplierId: Number(supplierId),
-    receivedBy,
-    notes,
-    lines,
-    totalCost,
-    createdAt: Date.now()
-  });
+  state.purchases.unshift(purchase);
+  await hydrateActivityTail();   // pick up the activity rows the RPC just wrote
 
   purchaseDraft = [];
   document.getElementById('pu-notes').value = '';
   saveState();
   renderAll();
-  toast(`${poNumber} recorded — ${peso(totalCost)}, stock updated`);
+  toast(`${purchase.poNumber} recorded — ${peso(purchase.totalCost)}, stock updated`);
 });
 
 document.getElementById('tbl-purchases').addEventListener('click', e=>{

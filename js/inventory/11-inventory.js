@@ -4,36 +4,22 @@
 
 /* 11-inventory.js — Inventory CRUD, stock in/out movements, and the activity log they write to. */
 
-function logActivity(item, type, qty, reason, ref){
-  state.activity.unshift({
-    id: state.nextActivityId++,             // unique — timestamps can collide
-    ts: Date.now(),
-    itemId: item.id,
-    name: displayName(item),
-    category: item.category,
-    type,                                   // 'in' or 'out'
-    reason,                                 // see REASONS below
-    qty,
-    unit: item.unit,
-    cost: item.cost,                        // puhunan per unit that day
-    selling: item.selling,                  // selling price that day
-    by: currentUser ? currentUser.name : '—',
-    ref: ref || null                        // e.g. a Purchase's PO number
-  });
+/* Writes one row to the `activity` table (see js/core/00-db.js) and
+   mirrors it into local state for instant rendering. Async now — every
+   caller needs `await`. */
+async function logActivity(item, type, qty, reason, ref){
+  const rec = await dbLogActivity(item, type, qty, reason, ref);
+  state.activity.unshift(rec);
   if(state.activity.length > ACTIVITY_CAP) state.activity = state.activity.slice(0, ACTIVITY_CAP);
+  return rec;
 }
 
-/* Roughly a year of trading at 60 records a day, and about 3.3 MB —
-   comfortably inside the 5 MB storage limit. */
-
 /* Sequential, human-readable document numbers — PO-20260915-0001, and
-   later SALE-/PROD-... reuse the same per-day counter pattern. */
-function nextDocNumber(prefix){
-  const day = isoDate(new Date()).replace(/-/g,'');
-  state.docSeq = state.docSeq || {};
-  const key = `${prefix}-${day}`;
-  state.docSeq[key] = (state.docSeq[key]||0) + 1;
-  return `${key}-${String(state.docSeq[key]).padStart(4,'0')}`;
+   SALE-/PROD-/EXP- reuse the same pattern. Handed out atomically by the
+   next_doc_number() Postgres function (0010_settings_sequences.sql) so
+   two devices can never be given the same number. */
+async function nextDocNumber(prefix){
+  return dbNextDocNumber(prefix);
 }
 
 /* Reverses exactly what one activity record did to stock — used by every
@@ -110,7 +96,7 @@ function voidMovement(id){
      <button class="btn danger" id="void-ok">Void Record</button>`);
 
   document.getElementById('void-cancel').addEventListener('click', closeModal);
-  document.getElementById('void-ok').addEventListener('click', ()=>{
+  document.getElementById('void-ok').addEventListener('click', async ()=>{
     const reasonEl = document.getElementById('void-reason');
     const reason = reasonEl.value.trim();
     if(!reason){
@@ -122,7 +108,12 @@ function voidMovement(id){
     const i2 = state.activity.findIndex(x => x.id === id);
     if(i2 < 0){ closeModal(); return toast('That record no longer exists', true); }
     const rec = state.activity[i2];
-    reverseMovementStock(rec);
+    try{
+      await dbVoidActivity(id, reason);
+    }catch(err){
+      return toast(err.message || 'Could not void that record', true);
+    }
+    reverseMovementStock(rec);   // mirrors what void_activity() just did server-side
     rec.voided = true;
     rec.voidReason = reason;
     rec.voidedBy = currentUser ? currentUser.name : '—';
@@ -169,11 +160,16 @@ function deleteMovementPermanently(id){
      <button class="btn danger" id="delp-ok">Delete Permanently</button>`);
 
   document.getElementById('delp-cancel').addEventListener('click', closeModal);
-  document.getElementById('delp-ok').addEventListener('click', ()=>{
+  document.getElementById('delp-ok').addEventListener('click', async ()=>{
     const i2 = state.activity.findIndex(x => x.id === id);
     if(i2 < 0){ closeModal(); return toast('That record no longer exists', true); }
     const rec = state.activity[i2];
-    if(!rec.voided) reverseMovementStock(rec);
+    try{
+      await dbDeleteActivityPermanently(id);
+    }catch(err){
+      return toast(err.message || 'Could not delete that record', true);
+    }
+    if(!rec.voided) reverseMovementStock(rec);   // mirrors what the server just did
     state.activity.splice(i2, 1);
     closeModal();
     saveState();
