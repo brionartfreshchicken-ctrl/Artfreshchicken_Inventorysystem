@@ -954,6 +954,9 @@
      and this has to work when you just double-click index.html.
      They share one global scope, so the order below matters. -->
 <script>window.APP_BUILD = "admin";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/core/00-config.local.js"></script>
+<script src="js/core/00-supabase.js"></script>
 <script src="js/core/01-config.js"></script>
 <script src="js/core/02-state.js"></script>
 <script src="js/core/03-storage.js"></script>
@@ -985,4 +988,4 @@ if('serviceWorker' in navigator){
 </script>
 </body>
 </html>
-<h1>FoodTrack</h1>
+
