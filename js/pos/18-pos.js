@@ -342,27 +342,26 @@ document.getElementById('btnCompleteSale').addEventListener('click', async ()=>{
     return toast('Check and confirm the GCash payment first', true);
   }
 
-  let txnNumber;
-  try{
-    txnNumber = await nextDocNumber('SALE');
-    for(const c of cart){
-      const i = byId(c.itemId);
-      i.stock = Math.max(0, i.stock - c.qty);
-      await dbUpdateItemStock(i.id, i.stock);
-      await logActivity(i, 'out', c.qty, 'sold', txnNumber);
-    }
-  }catch(err){
-    toast(err.message || 'Could not record that sale', true);
-    return;
-  }
-
   const saleItems = cart.map(c=>{
     const i = byId(c.itemId);
     return { itemId: i.id, name: displayName(i), qty: c.qty, unitPrice: i.selling, lineTotal: c.qty*i.selling };
   });
 
+  // complete_sale() (0018_complete_sale.sql) re-checks stock and does the
+  // item stock updates, the activity rows, and the sale + sale_items
+  // record atomically — see there for why this isn't several client calls.
+  let sale;
+  try{
+    sale = await dbCompleteSale({ items: saleItems, discount, paymentMethod, cashReceived, change });
+  }catch(err){
+    toast(err.message || 'Could not record that sale', true);
+    return;
+  }
+
+  // Mirror what the server just did, for instant UI feedback without a re-fetch.
   cart.forEach(c=>{
     const i = byId(c.itemId);
+    i.stock = Math.max(0, i.stock - c.qty);
     // Sold from a Menu Plan food (synced by syncActivePlanFoodsToPOS)?
     // Count it as served, same as typing it into "Servings Served" by hand.
     if(i.sourcePlanId != null && i.sourceFoodId != null){
@@ -378,24 +377,8 @@ document.getElementById('btnCompleteSale').addEventListener('click', async ()=>{
       }
     }
   });
-
-  // The sale header itself (state.sales) still lives only locally until
-  // POS gets fully migrated — stock and the movement log above are
-  // already durable either way.
-  state.sales.push({
-    id: state.nextSaleId++,
-    txnNumber,
-    ts: Date.now(),
-    cashier: currentUser ? currentUser.name : '—',
-    items: saleItems,
-    subtotal: tot.benta,
-    discount,
-    total,
-    paymentMethod,
-    cashReceived,
-    change,
-    status: 'completed'
-  });
+  state.sales.unshift(sale);
+  await hydrateActivityTail();
 
   cart = [];
   document.getElementById('pos-discount').value = 0;
@@ -408,8 +391,8 @@ document.getElementById('btnCompleteSale').addEventListener('click', async ()=>{
   renderAll();
   const changeMsg = paymentMethod==='cash' ? `, change ${peso(change)}` : '';
   const msg = isAdmin()
-    ? `${txnNumber} — revenue ${peso(total)}, profit ${peso(tot.tubo-discount)}${changeMsg}`
-    : `${txnNumber} — ${peso(total)} collected${changeMsg}`;
+    ? `${sale.txnNumber} — revenue ${peso(total)}, profit ${peso(tot.tubo-discount)}${changeMsg}`
+    : `${sale.txnNumber} — ${peso(total)} collected${changeMsg}`;
   toast(msg, 'success');
 });
 

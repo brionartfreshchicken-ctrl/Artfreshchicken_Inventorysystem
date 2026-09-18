@@ -307,6 +307,57 @@ async function dbCompleteProduction({ recipeId, qtyProduced, producedBy, lines, 
   return mapProductionRow(data);
 }
 
+/* ---------- sales (POS) ---------- */
+
+function mapSaleRow(r){
+  return {
+    id: r.id, txnNumber: r.txn_number, ts: new Date(r.ts).getTime(),
+    cashier: r.cashier_name || '—',
+    items: (r.sale_items || []).map(i => ({
+      itemId: i.item_id, name: i.name, qty: Number(i.qty),
+      unitPrice: Number(i.unit_price), lineTotal: Number(i.line_total)
+    })),
+    subtotal: Number(r.subtotal), discount: Number(r.discount), total: Number(r.total),
+    paymentMethod: r.payment_method,
+    cashReceived: r.cash_received == null ? null : Number(r.cash_received),
+    change: r.change == null ? null : Number(r.change),
+    status: r.status, voidReason: r.void_reason, voidedBy: r.voided_by,
+    voidedAt: r.voided_at ? new Date(r.voided_at).getTime() : null
+  };
+}
+
+/* Runs complete_sale() (0018_complete_sale.sql) — item stock, the
+   activity rows, and the sale + sale_items record all happen atomically,
+   with stock re-checked server-side so two terminals can't both sell the
+   last unit of something at once. */
+async function dbCompleteSale({ items, discount, paymentMethod, cashReceived, change }){
+  const { data: saleId, error } = await sb.rpc('complete_sale', {
+    p_items: items.map(i => ({
+      item_id: i.itemId, name: i.name, qty: i.qty, unit_price: i.unitPrice, line_total: i.lineTotal
+    })),
+    p_discount: discount, p_payment_method: paymentMethod,
+    p_cash_received: cashReceived, p_change: change
+  });
+  if(error) throw error;
+
+  const { data, error: fetchErr } = await sb.from('sales')
+    .select('*, sale_items(*)').eq('id', saleId).single();
+  if(fetchErr) throw fetchErr;
+  return mapSaleRow(data);
+}
+
+async function dbVoidSale(id, reason){
+  const { error } = await sb.rpc('void_sale', {
+    p_sale_id: id, p_reason: reason, p_by: currentUser ? currentUser.name : '—'
+  });
+  if(error) throw error;
+}
+
+async function dbDeleteSalePermanently(id){
+  const { error } = await sb.rpc('delete_sale_permanently', { p_sale_id: id });
+  if(error) throw error;
+}
+
 /* ---------- Menu Plan: plans, foods, ingredient lines ----------
    Unlike everything above, this page has no modal/Save-draft pattern —
    every keystroke mutates state directly, live. Persisting on every
@@ -478,6 +529,13 @@ async function hydrateCosPlans(){
   }
 }
 
+async function hydrateSales(){
+  const { data, error } = await sb.from('sales')
+    .select('*, sale_items(*)').order('ts', { ascending: false });
+  if(error){ toast('Could not load Sales History: ' + error.message, true); return; }
+  state.sales = (data || []).map(mapSaleRow);
+}
+
 async function hydrateFromSupabase(){
   const [itemsRes, suppliersRes, purchasesRes] = await Promise.all([
     sb.from('items').select('*').order('id'),
@@ -486,7 +544,8 @@ async function hydrateFromSupabase(){
     hydrateActivityTail(),
     hydrateRecipes(),
     hydrateProductions(),
-    hydrateCosPlans()
+    hydrateCosPlans(),
+    hydrateSales()
   ]);
 
   for(const res of [itemsRes, suppliersRes, purchasesRes]){

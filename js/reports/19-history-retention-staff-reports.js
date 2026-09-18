@@ -287,13 +287,21 @@ document.getElementById('btnDeleteAllTransactions').addEventListener('click', ()
      <button class="btn danger" id="delalltxn-ok">Delete Permanently</button>`);
 
   document.getElementById('delalltxn-cancel').addEventListener('click', closeModal);
-  document.getElementById('delalltxn-ok').addEventListener('click', ()=>{
+  document.getElementById('delalltxn-ok').addEventListener('click', async ()=>{
     const confirmEl = document.getElementById('delalltxn-confirm');
     if(confirmEl.value.trim() !== 'DELETE'){
       document.getElementById('delalltxn-err').style.display = 'block';
       confirmEl.focus();
       return;
     }
+    try{
+      for(const s of sales) await dbDeleteSalePermanently(s.id);
+    }catch(err){
+      closeModal();
+      return toast(err.message || 'Could not delete every transaction in range', true);
+    }
+
+    // Mirror what each delete_sale_permanently() call just did server-side.
     linkedLines.forEach(a=>{
       if(a.voided) return;
       reverseMovementStock(a);
@@ -353,7 +361,7 @@ function voidSale(saleId){
      <button class="btn danger" id="voidsale-ok">Void Sale</button>`);
 
   document.getElementById('voidsale-cancel').addEventListener('click', closeModal);
-  document.getElementById('voidsale-ok').addEventListener('click', ()=>{
+  document.getElementById('voidsale-ok').addEventListener('click', async ()=>{
     const reasonEl = document.getElementById('voidsale-reason');
     const reason = reasonEl.value.trim();
     if(!reason){
@@ -364,7 +372,13 @@ function voidSale(saleId){
     const by = currentUser ? currentUser.name : '—';
     const now = Date.now();
 
-    // Void every linked, not-already-voided movement, and give the stock back
+    try{
+      await dbVoidSale(saleId, reason);
+    }catch(err){
+      return toast(err.message || 'Could not void that sale', true);
+    }
+
+    // Mirror what void_sale() just did server-side, for instant UI feedback.
     state.activity.forEach(a=>{
       if(a.ref !== sale.txnNumber || a.reason !== 'sold' || a.voided) return;
       reverseMovementStock(a);
@@ -412,7 +426,14 @@ function deleteSalePermanently(saleId){
      <button class="btn danger" id="dels-ok">Delete Permanently</button>`);
 
   document.getElementById('dels-cancel').addEventListener('click', closeModal);
-  document.getElementById('dels-ok').addEventListener('click', ()=>{
+  document.getElementById('dels-ok').addEventListener('click', async ()=>{
+    try{
+      await dbDeleteSalePermanently(saleId);
+    }catch(err){
+      return toast(err.message || 'Could not delete that sale', true);
+    }
+
+    // Mirror what delete_sale_permanently() just did server-side.
     linkedLines.forEach(a=>{
       if(!a.voided) reverseMovementStock(a);
     });
