@@ -94,15 +94,20 @@ function openExpenseModal(mode, expense){
       recordedBy: document.getElementById('ex-recordedby').value.trim() || (currentUser?currentUser.name:'—'),
       notes: document.getElementById('ex-notes').value.trim()
     };
-    if(isEdit){
-      Object.assign(expense, data);
-      toast('Expense updated');
-    }else{
-      // Operating Expenses itself isn't migrated to Supabase yet (a later
-      // phase) — this just keeps working now that nextDocNumber() is async.
-      const expenseNumber = await nextDocNumber('EXP');
-      state.expenses.push({id: state.nextExpenseId++, expenseNumber, ...data});
-      toast('Expense added');
+    try{
+      if(isEdit){
+        const updated = await dbUpdateExpense(expense.id, { ...expense, ...data });
+        Object.assign(expense, updated);
+        toast('Expense updated');
+      }else{
+        const expenseNumber = await nextDocNumber('EXP');
+        const created = await dbInsertExpense({ expenseNumber, ...data });
+        state.expenses.push(created);
+        toast('Expense added');
+      }
+    }catch(err){
+      toast(err.message || 'Could not save that expense', true);
+      return;
     }
     saveState();
     renderAll();
@@ -117,7 +122,12 @@ function confirmDeleteExpense(expense){
      <div class="hint" style="margin-top:10px;color:var(--yellow);">This cannot be undone.</div>`,
     `<button class="btn ghost" id="f-cancel">Cancel</button><button class="btn danger" id="f-del">Delete</button>`);
   document.getElementById('f-cancel').addEventListener('click', closeModal);
-  document.getElementById('f-del').addEventListener('click', ()=>{
+  document.getElementById('f-del').addEventListener('click', async ()=>{
+    try{
+      await dbDeleteExpense(expense.id);
+    }catch(err){
+      return toast(err.message || 'Could not delete that expense', true);
+    }
     state.expenses = state.expenses.filter(e=>e.id!==expense.id);
     saveState(); renderAll(); closeModal();
     toast('Expense deleted');

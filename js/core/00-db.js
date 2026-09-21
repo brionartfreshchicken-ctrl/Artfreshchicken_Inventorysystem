@@ -358,6 +358,133 @@ async function dbDeleteSalePermanently(id){
   if(error) throw error;
 }
 
+/* ---------- expenses ---------- */
+
+function mapExpenseRow(r){
+  return {
+    id: r.id, expenseNumber: r.expense_number, date: new Date(r.date+'T00:00:00').getTime(),
+    category: r.category, description: r.description || '', amount: Number(r.amount),
+    paymentMethod: r.payment_method, recordedBy: r.recorded_by || '', notes: r.notes || ''
+  };
+}
+
+function expenseToRow(o){
+  return {
+    expense_number: o.expenseNumber, date: isoDate(new Date(o.date)), category: o.category,
+    description: o.description, amount: o.amount, payment_method: o.paymentMethod,
+    recorded_by: o.recordedBy, notes: o.notes
+  };
+}
+
+async function dbInsertExpense(o){
+  const { data, error } = await sb.from('expenses').insert(expenseToRow(o)).select().single();
+  if(error) throw error;
+  return mapExpenseRow(data);
+}
+
+async function dbUpdateExpense(id, o){
+  const { data, error } = await sb.from('expenses').update(expenseToRow(o)).eq('id', id).select().single();
+  if(error) throw error;
+  return mapExpenseRow(data);
+}
+
+async function dbDeleteExpense(id){
+  const { error } = await sb.from('expenses').delete().eq('id', id);
+  if(error) throw error;
+}
+
+async function hydrateExpenses(){
+  const { data, error } = await sb.from('expenses').select('*').order('date', { ascending: false });
+  if(error){ toast('Could not load Operating Expenses: ' + error.message, true); return; }
+  state.expenses = (data || []).map(mapExpenseRow);
+}
+
+/* ---------- staff directory ---------- */
+
+function mapStaffRow(r){
+  return {
+    id: r.id, name: r.name, position: r.position || '',
+    wage: r.wage == null ? null : Number(r.wage), wagePeriod: r.wage_period,
+    workDates: (r.staff_work_dates || []).map(d => d.work_date)
+  };
+}
+
+function staffToRow(o){
+  return { name: o.name, position: o.position, wage: o.wage, wage_period: o.wagePeriod };
+}
+
+async function dbInsertStaff(o){
+  const { data, error } = await sb.from('staff').insert(staffToRow(o)).select().single();
+  if(error) throw error;
+  if(o.workDates && o.workDates.length){
+    const rows = o.workDates.map(d => ({ staff_id: data.id, work_date: d }));
+    const { error: wdErr } = await sb.from('staff_work_dates').insert(rows);
+    if(wdErr) throw wdErr;
+  }
+  const full = await sb.from('staff').select('*, staff_work_dates(*)').eq('id', data.id).single();
+  if(full.error) throw full.error;
+  return mapStaffRow(full.data);
+}
+
+async function dbUpdateStaff(id, o){
+  const { error } = await sb.from('staff').update(staffToRow(o)).eq('id', id);
+  if(error) throw error;
+  const { error: delErr } = await sb.from('staff_work_dates').delete().eq('staff_id', id);
+  if(delErr) throw delErr;
+  if(o.workDates && o.workDates.length){
+    const rows = o.workDates.map(d => ({ staff_id: id, work_date: d }));
+    const { error: insErr } = await sb.from('staff_work_dates').insert(rows);
+    if(insErr) throw insErr;
+  }
+  const full = await sb.from('staff').select('*, staff_work_dates(*)').eq('id', id).single();
+  if(full.error) throw full.error;
+  return mapStaffRow(full.data);
+}
+
+async function dbDeleteStaff(id){
+  const { error } = await sb.from('staff').delete().eq('id', id);
+  if(error) throw error;
+}
+
+async function hydrateStaff(){
+  const { data, error } = await sb.from('staff').select('*, staff_work_dates(*)').order('name');
+  if(error){ toast('Could not load the Staff Directory: ' + error.message, true); return; }
+  state.staffList = (data || []).map(mapStaffRow);
+}
+
+/* ---------- LPG usage ---------- */
+
+function mapLpgRow(r){
+  return { id: r.id, dateStart: r.date_start, dateEnd: r.date_end, price: r.price == null ? null : Number(r.price) };
+}
+
+function lpgToRow(o){
+  return { date_start: o.dateStart, date_end: o.dateEnd, price: o.price };
+}
+
+async function dbInsertLpg(o){
+  const { data, error } = await sb.from('lpg_logs').insert(lpgToRow(o)).select().single();
+  if(error) throw error;
+  return mapLpgRow(data);
+}
+
+async function dbUpdateLpg(id, o){
+  const { data, error } = await sb.from('lpg_logs').update(lpgToRow(o)).eq('id', id).select().single();
+  if(error) throw error;
+  return mapLpgRow(data);
+}
+
+async function dbDeleteLpg(id){
+  const { error } = await sb.from('lpg_logs').delete().eq('id', id);
+  if(error) throw error;
+}
+
+async function hydrateLpgLogs(){
+  const { data, error } = await sb.from('lpg_logs').select('*').order('date_start', { ascending: false });
+  if(error){ toast('Could not load LPG Usage: ' + error.message, true); return; }
+  state.lpgLogs = (data || []).map(mapLpgRow);
+}
+
 /* ---------- Menu Plan: plans, foods, ingredient lines ----------
    Unlike everything above, this page has no modal/Save-draft pattern —
    every keystroke mutates state directly, live. Persisting on every
@@ -545,7 +672,10 @@ async function hydrateFromSupabase(){
     hydrateRecipes(),
     hydrateProductions(),
     hydrateCosPlans(),
-    hydrateSales()
+    hydrateSales(),
+    hydrateExpenses(),
+    hydrateStaff(),
+    hydrateLpgLogs()
   ]);
 
   for(const res of [itemsRes, suppliersRes, purchasesRes]){

@@ -1299,7 +1299,7 @@ function openStaffModal(mode, staff){
   renderCal();
   updateWorkdaysHint();
 
-  document.getElementById('staff-save').addEventListener('click', ()=>{
+  document.getElementById('staff-save').addEventListener('click', async ()=>{
     const name = document.getElementById('f-staff-name').value.trim();
     const position = document.getElementById('f-staff-pos').value.trim();
     const wageStr = document.getElementById('f-staff-wage').value;
@@ -1307,16 +1307,20 @@ function openStaffModal(mode, staff){
     const wagePeriod = document.getElementById('f-staff-wage-period').value;
     const workDates = staffWorkDates.slice().sort();
     if(!name) return toast('Enter a name', true);
-    if(mode==='add'){
-      state.staffList.push({id: state.nextStaffId++, name, position, wage, wagePeriod, workDates});
-      toast('Staff added');
-    }else{
-      staff.name = name;
-      staff.position = position;
-      staff.wage = wage;
-      staff.wagePeriod = wagePeriod;
-      staff.workDates = workDates;
-      toast('Staff updated');
+    const data = { name, position, wage, wagePeriod, workDates };
+    try{
+      if(mode==='add'){
+        const created = await dbInsertStaff(data);
+        state.staffList.push(created);
+        toast('Staff added');
+      }else{
+        const updated = await dbUpdateStaff(staff.id, data);
+        Object.assign(staff, updated);
+        toast('Staff updated');
+      }
+    }catch(err){
+      toast(err.message || 'Could not save that staff record', true);
+      return;
     }
     saveState();
     closeModal();
@@ -1339,7 +1343,12 @@ document.getElementById('tbl-staff').addEventListener('click', e=>{
     if(!s) return;
     confirmAction('Remove staff',
       `<div class="hint">Remove <strong style="color:var(--text)">${escapeHtml(s.name)}</strong> from the staff directory?</div>`,
-      'Remove', ()=>{
+      'Remove', async ()=>{
+        try{
+          await dbDeleteStaff(s.id);
+        }catch(err){
+          return toast(err.message || 'Could not remove that staff record', true);
+        }
         state.staffList = state.staffList.filter(x=>x.id !== s.id);
         saveState();
         renderOthers();
@@ -1366,21 +1375,27 @@ function openLpgModal(mode, log){
   document.getElementById('lpg-cancel').addEventListener('click', closeModal);
   document.getElementById('f-lpg-start').focus();
 
-  document.getElementById('lpg-save').addEventListener('click', ()=>{
+  document.getElementById('lpg-save').addEventListener('click', async ()=>{
     const dateStart = document.getElementById('f-lpg-start').value || null;
     const dateEnd   = document.getElementById('f-lpg-end').value || null;
     const priceStr  = document.getElementById('f-lpg-price').value;
     const price = priceStr === '' ? null : Number(priceStr);
     if(!dateStart) return toast('Enter a start date', true);
     if(dateEnd && dateEnd < dateStart) return toast('End date is before the start date', true);
-    if(mode==='add'){
-      state.lpgLogs.push({id: state.nextLpgId++, dateStart, dateEnd, price});
-      toast('LPG record added');
-    }else{
-      log.dateStart = dateStart;
-      log.dateEnd = dateEnd;
-      log.price = price;
-      toast('LPG record updated');
+    const data = { dateStart, dateEnd, price };
+    try{
+      if(mode==='add'){
+        const created = await dbInsertLpg(data);
+        state.lpgLogs.push(created);
+        toast('LPG record added');
+      }else{
+        const updated = await dbUpdateLpg(log.id, data);
+        Object.assign(log, updated);
+        toast('LPG record updated');
+      }
+    }catch(err){
+      toast(err.message || 'Could not save that LPG record', true);
+      return;
     }
     saveState();
     closeModal();
@@ -1403,7 +1418,12 @@ document.getElementById('tbl-lpg').addEventListener('click', e=>{
     if(!l) return;
     confirmAction('Delete LPG record',
       `<div class="hint">Delete this LPG usage record? This cannot be undone.</div>`,
-      'Delete', ()=>{
+      'Delete', async ()=>{
+        try{
+          await dbDeleteLpg(l.id);
+        }catch(err){
+          return toast(err.message || 'Could not delete that record', true);
+        }
         state.lpgLogs = state.lpgLogs.filter(x=>x.id !== l.id);
         saveState();
         renderOthers();
