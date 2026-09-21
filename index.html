@@ -71,18 +71,20 @@
         <div class="auth-msg" id="signupMsg"></div>
         <button class="btn primary auth-go" id="btnSignup">Create account</button>
       </div>
+    </div>
 
-      <!-- Password reset: one field, a real email with a reset link
-           (Supabase Auth's built-in flow — see reset-password.html) -->
-      <div id="forgotPane" style="display:none;">
-        <div class="auth-title">Reset your password</div>
-        <div class="auth-sub">Enter the Gmail address on your account and we'll email you a reset link.</div>
-        <div class="field"><label>Gmail address</label>
-          <input id="fp-email" type="email" placeholder="you@gmail.com" autocomplete="email"/></div>
-        <div class="auth-msg" id="fpMsg"></div>
-        <button class="btn primary auth-go" id="fpSend">Send reset link</button>
-        <button class="auth-link" id="fpBack">&larr; Back to sign in</button>
-      </div>
+    <!-- Password reset: one field, a real email with a reset link
+         (Supabase Auth's built-in flow — see reset-password.html).
+         A sibling of loginPane, not nested inside it — showForgot()
+         toggles the two independently. -->
+    <div id="forgotPane" style="display:none;">
+      <div class="auth-title">Reset your password</div>
+      <div class="auth-sub">Enter the Gmail address on your account and we'll email you a reset link.</div>
+      <div class="field"><label>Gmail address</label>
+        <input id="fp-email" type="email" placeholder="you@gmail.com" autocomplete="email"/></div>
+      <div class="auth-msg" id="fpMsg"></div>
+      <button class="btn primary auth-go" id="fpSend">Send reset link</button>
+      <button class="auth-link" id="fpBack">&larr; Back to sign in</button>
     </div>
 
     <div class="auth-foot">
