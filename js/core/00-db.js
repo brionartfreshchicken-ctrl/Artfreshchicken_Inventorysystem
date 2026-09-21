@@ -204,6 +204,47 @@ async function dbDeleteActivityPermanently(id){
   if(error) throw error;
 }
 
+/* Bulk void — deliberately does NOT reverse stock (see 0020's header
+   comment), matching this app's existing "Void in Range" behavior. */
+async function dbVoidActivityRange(ids, reason){
+  const { data, error } = await sb.rpc('void_activity_range', {
+    p_ids: ids, p_reason: reason, p_by: currentUser ? currentUser.name : '—'
+  });
+  if(error) throw error;
+  return data;
+}
+
+/* Bulk permanent delete — reverses stock for any record not already voided. */
+async function dbDeleteActivityRange(ids){
+  const { data, error } = await sb.rpc('delete_activity_range', { p_ids: ids });
+  if(error) throw error;
+  return data;
+}
+
+/* ---------- settings (singleton row) ---------- */
+
+function settingsToRow(o){
+  const row = {};
+  if('gcashQrPath' in o) row.gcash_qr_path = o.gcashQrPath;
+  if('retentionDays' in o) row.retention_days = o.retentionDays;
+  if('lastPurge' in o) row.last_purge = o.lastPurge ? new Date(o.lastPurge).toISOString() : null;
+  return row;
+}
+
+async function dbUpdateSettings(o){
+  const { error } = await sb.from('settings').update(settingsToRow(o)).eq('id', true);
+  if(error) throw error;
+}
+
+async function hydrateSettings(){
+  const { data, error } = await sb.from('settings').select('*').eq('id', true).single();
+  if(error){ toast('Could not load Settings: ' + error.message, true); return; }
+  state.gcashQrPath = data.gcash_qr_path;
+  state.gcashQrImage = publicImageUrl(data.gcash_qr_path);
+  state.retentionDays = data.retention_days || 0;
+  state.lastPurge = data.last_purge ? new Date(data.last_purge).getTime() : null;
+}
+
 /* ---------- document numbers ---------- */
 
 async function dbNextDocNumber(prefix){
@@ -675,7 +716,8 @@ async function hydrateFromSupabase(){
     hydrateSales(),
     hydrateExpenses(),
     hydrateStaff(),
-    hydrateLpgLogs()
+    hydrateLpgLogs(),
+    hydrateSettings()
   ]);
 
   for(const res of [itemsRes, suppliersRes, purchasesRes]){

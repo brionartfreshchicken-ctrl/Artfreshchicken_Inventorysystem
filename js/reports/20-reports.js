@@ -500,7 +500,7 @@ document.getElementById('btnClearLog').addEventListener('click', ()=>{
      <button class="btn danger" id="clearlog-ok">${everything ? 'Void everything' : 'Void these records'}</button>`);
 
   document.getElementById('clearlog-cancel').addEventListener('click', closeModal);
-  document.getElementById('clearlog-ok').addEventListener('click', ()=>{
+  document.getElementById('clearlog-ok').addEventListener('click', async ()=>{
     const reasonEl = document.getElementById('clearlog-reason');
     const reason = reasonEl.value.trim();
     if(!reason){
@@ -508,11 +508,19 @@ document.getElementById('btnClearLog').addEventListener('click', ()=>{
       reasonEl.focus();
       return;
     }
-    const ids = new Set(records.map(a=>a.id));
+    const ids = records.map(a=>a.id);
+    try{
+      await dbVoidActivityRange(ids, reason);
+    }catch(err){
+      return toast(err.message || 'Could not void those records', true);
+    }
+
+    // Mirror what void_activity_range() just did server-side (no stock reversal).
+    const idSet = new Set(ids);
     const by = currentUser ? currentUser.name : '—';
     const now = Date.now();
     state.activity.forEach(a=>{
-      if(!ids.has(a.id)) return;
+      if(!idSet.has(a.id)) return;
       a.voided = true;
       a.voidReason = reason;
       a.voidedBy = by;
@@ -562,19 +570,27 @@ document.getElementById('btnDeleteAllLog').addEventListener('click', ()=>{
      <button class="btn danger" id="deleteall-ok">Delete Permanently</button>`);
 
   document.getElementById('deleteall-cancel').addEventListener('click', closeModal);
-  document.getElementById('deleteall-ok').addEventListener('click', ()=>{
+  document.getElementById('deleteall-ok').addEventListener('click', async ()=>{
     const confirmEl = document.getElementById('deleteall-confirm');
     if(confirmEl.value.trim() !== 'DELETE'){
       document.getElementById('deleteall-err').style.display = 'block';
       confirmEl.focus();
       return;
     }
+    const ids = records.map(a=>a.id);
+    try{
+      await dbDeleteActivityRange(ids);
+    }catch(err){
+      return toast(err.message || 'Could not delete those records', true);
+    }
+
+    // Mirror what delete_activity_range() just did server-side.
     records.forEach(a=>{
       if(a.voided) return;
       reverseMovementStock(a);
     });
-    const ids = new Set(records.map(a=>a.id));
-    state.activity = state.activity.filter(a => !ids.has(a.id));
+    const idSet = new Set(ids);
+    state.activity = state.activity.filter(a => !idSet.has(a.id));
     closeModal();
     saveState();
     renderAll();

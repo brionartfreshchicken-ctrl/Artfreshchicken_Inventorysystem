@@ -638,7 +638,7 @@ document.getElementById('btnClearHistory').addEventListener('click', ()=>{
      <button class="btn danger" id="clear-ok">${everything ? 'Void everything' : 'Void these records'}</button>`);
 
   document.getElementById('clear-cancel').addEventListener('click', closeModal);
-  document.getElementById('clear-ok').addEventListener('click', ()=>{
+  document.getElementById('clear-ok').addEventListener('click', async ()=>{
     const reasonEl = document.getElementById('clear-reason');
     const reason = reasonEl.value.trim();
     if(!reason){
@@ -646,11 +646,19 @@ document.getElementById('btnClearHistory').addEventListener('click', ()=>{
       reasonEl.focus();
       return;
     }
-    const ids = new Set(records.map(a=>a.id));
+    const ids = records.map(a=>a.id);
+    try{
+      await dbVoidActivityRange(ids, reason);
+    }catch(err){
+      return toast(err.message || 'Could not void those records', true);
+    }
+
+    // Mirror what void_activity_range() just did server-side (no stock reversal).
+    const idSet = new Set(ids);
     const by = currentUser ? currentUser.name : '—';
     const now = Date.now();
     state.activity.forEach(a=>{
-      if(!ids.has(a.id)) return;
+      if(!idSet.has(a.id)) return;
       a.voided = true;
       a.voidReason = reason;
       a.voidedBy = by;
@@ -691,18 +699,29 @@ function recordsPastRetention(){
   return (state.activity || []).filter(a => a.ts < cut);
 }
 
-/* Returns how many were removed. Runs at startup and from the button. */
-function applyRetention(quiet){
-  const doomed = recordsPastRetention();
-  if(!doomed.length) return 0;
+/* Returns how many were removed. Runs at login (see enterApp() in
+   07-login.js) and from the "Delete old records now" button. Deletes
+   server-side via purge_old_activity() (0011/0019) so old records don't
+   just come back on the next hydration — then re-fetches activity to
+   reflect that locally. */
+async function applyRetention(quiet){
+  let removed;
+  try{
+    const { data, error } = await sb.rpc('purge_old_activity');
+    if(error) throw error;
+    removed = data || 0;
+  }catch(err){
+    if(!quiet) toast(err.message || 'Could not check retention', true);
+    return 0;
+  }
+  if(!removed) return 0;
 
-  const ids = new Set(doomed.map(a => a.id));
-  state.activity = (state.activity || []).filter(a => !ids.has(a.id));
+  await hydrateActivityTail();
   state.lastPurge = Date.now();
   saveState();
 
-  if(!quiet) toast(`${doomed.length} record${doomed.length===1?'':'s'} older than ${retentionDays()} days deleted`);
-  return doomed.length;
+  if(!quiet) toast(`${removed} record${removed===1?'':'s'} older than ${retentionDays()} days deleted`);
+  return removed;
 }
 
 function renderRetention(){
@@ -1831,7 +1850,13 @@ document.getElementById('btnSaveRetention').addEventListener('click', ()=>{
   if(!isAdmin()) return toast('Admins only', true);
   const days = Number(document.getElementById('ret-days').value) || 0;
 
-  const commit = ()=>{
+  const commit = async ()=>{
+    try{
+      await dbUpdateSettings({ retentionDays: days });
+    }catch(err){
+      toast(err.message || 'Could not save that setting', true);
+      return;
+    }
     state.retentionDays = days;
     saveState();
     renderRetention();
@@ -1882,8 +1907,8 @@ document.getElementById('btnPurgeNow').addEventListener('click', ()=>{
      <div class="hint" style="margin-top:12px;color:var(--yellow);">
        This cannot be undone. Stock levels stay exactly as they are.
      </div>`,
-    'Delete them', ()=>{
-      const n = applyRetention(true);
+    'Delete them', async ()=>{
+      const n = await applyRetention(true);
       renderAll();
       renderRetention();
       toast(`${n.toLocaleString()} old record${n===1?'':'s'} deleted`);

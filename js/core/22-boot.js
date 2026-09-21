@@ -98,10 +98,9 @@ async function init(){
     state = defaultState();
     await saveState();
   }
-  /* Enforce the retention limit before the first render, so Reports never
-     show records that are about to vanish. */
-  const purged = applyRetention(true);
-  if(purged) console.info(`[retention] removed ${purged} record(s) past the limit`);
+  // Retention now runs after sign-in instead of here — purge_old_activity()
+  // (0011/0019) needs an authenticated caller, and there's nothing to purge
+  // until Supabase data is hydrated anyway. See enterApp() in 07-login.js.
 
   tickClock();
   document.getElementById('loading').style.display = 'none';

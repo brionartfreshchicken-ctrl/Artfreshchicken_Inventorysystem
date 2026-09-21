@@ -78,9 +78,14 @@ document.getElementById('settings-qr-file').addEventListener('change', async e=>
   const file = e.target.files[0];
   if(!file) return;
   if(!file.type.startsWith('image/')){ toast('Please choose an image file', true); return; }
+  const oldPath = state.gcashQrPath;
   try{
-    state.gcashQrImage = await resizeImageFile(file, 400, 1, 'png');
-    saveState();
+    const dataUrl = await resizeImageFile(file, 400, 1, 'png');
+    const path = await dbUploadImage(dataUrl, 'gcash-qr');
+    await dbUpdateSettings({ gcashQrPath: path });
+    if(oldPath && oldPath !== path) dbDeleteImage(oldPath);
+    state.gcashQrPath = path;
+    state.gcashQrImage = publicImageUrl(path);
     renderSettingsQr();
     toast('GCash QR code updated');
   }catch(err){
@@ -88,10 +93,18 @@ document.getElementById('settings-qr-file').addEventListener('change', async e=>
   }
 });
 
-document.getElementById('settings-qr-remove').addEventListener('click', ()=>{
+document.getElementById('settings-qr-remove').addEventListener('click', async ()=>{
+  const oldPath = state.gcashQrPath;
+  try{
+    await dbUpdateSettings({ gcashQrPath: null });
+  }catch(err){
+    toast(err.message || 'Could not remove the QR code', true);
+    return;
+  }
+  if(oldPath) dbDeleteImage(oldPath);
+  state.gcashQrPath = null;
   state.gcashQrImage = null;
   document.getElementById('settings-qr-file').value = '';
-  saveState();
   renderSettingsQr();
   toast('GCash QR code removed — POS will show the placeholder code again');
 });

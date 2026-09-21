@@ -31,6 +31,11 @@ async function enterApp(profile){
   currentUser = profile;
   await Promise.all([ refreshProfiles(), hydrateFromSupabase() ]);
 
+  // Enforce the retention limit before the first render, so Reports never
+  // show records that are about to vanish.
+  const purged = await applyRetention(true);
+  if(purged) console.info(`[retention] removed ${purged} record(s) past the limit`);
+
   // account block at the foot of the sidebar
   document.getElementById('sfName').textContent   = profile.name;
   document.getElementById('sfMail').textContent   = profile.email || (profile.role === 'admin' ? 'Administrator' : 'Staff');
