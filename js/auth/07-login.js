@@ -182,10 +182,14 @@ document.getElementById('fpSend').addEventListener('click', async ()=>{
 
   const redirectTo = new URL('reset-password.html', window.location.href).toString();
   const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
-  if(error) return authMsg('fpMsg', error.message);
 
-  // Same message whether or not that email is actually on file, so this
-  // never reveals which Gmail addresses have accounts.
+  // Same message on success AND on failure — this never reveals which
+  // Gmail addresses have accounts, and it also means a misconfigured/
+  // rate-limited email service (Supabase's shared sender needs custom
+  // SMTP for real reliability — see project notes) fails quietly here
+  // instead of showing a confusing internal error. Logged to the
+  // console so whoever owns the Supabase project can still diagnose it.
+  if(error) console.warn('[password reset]', error.message);
   authMsg('fpMsg', 'If that Gmail address has an account, a reset link is on its way.', true);
 });
 
