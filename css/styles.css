@@ -282,7 +282,14 @@ input::placeholder{color:var(--dimmer);}
   text-transform:uppercase;color:var(--teal);
 }
 .card-head .hint{margin-left:auto;font-size:12px;}
-.card-body{padding:16px 18px;}
+/* Wide tables (Products, Stock Movements, Purchases, Reports…) are
+   wider than the card on tablet/narrow-laptop screens. .card itself
+   keeps overflow:hidden (rounded corners, collapsed food cards, etc.
+   rely on it), so the scroll container has to be card-body specifically
+   — otherwise the table's rightmost columns (often the row Actions,
+   Edit/Delete/Stock In/Out) were silently clipped with no way to reach
+   them at all, not even a scrollbar. */
+.card-body{padding:16px 18px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
 .modal-foot{display:flex;gap:8px;justify-content:flex-end;padding:13px 18px;flex-wrap:wrap;}
 
 /* ---------- Stat tiles ---------- */
@@ -634,9 +641,15 @@ body.staff-mode .money-col{display:none;}
   .food-mini{grid-template-columns:repeat(2,1fr);}
 }
 
-/* quantity = number + unit, side by side */
-.qty-cell{display:flex;gap:6px;align-items:center;}
-.qty-cell .cos-line-input{flex:1;min-width:0;}
+/* quantity = number + unit, side by side. The input previously had
+   min-width:0 (lets a flex item shrink past its content) with only one
+   sibling select — once a second select (the fraction quick-pick) was
+   added, the input absorbed all the compression and collapsed to an
+   unusable ~18px on every screen size, not just narrow ones. A real
+   floor here means the row grows wider instead, which the card-body
+   overflow-x:auto fix above already handles with a horizontal scroll. */
+.qty-cell{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;}
+.qty-cell .cos-line-input{flex:1 1 56px;min-width:56px;}
 .cos-line-unit{
   width:auto;flex:0 0 auto;padding:6px 8px;font-size:12px;
   background:var(--panel2);border:1px solid var(--border);border-radius:7px;
