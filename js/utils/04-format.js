@@ -14,6 +14,40 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+/* Recipe/cooking quantities are often written as fractions rather than
+   decimals — accepts a plain number, a simple fraction ("1/2"), a mixed
+   number ("1 1/2" or "1-1/2"), or a fraction glyph ("½", "1½"), and
+   returns a decimal. Returns NaN (same as a failed parseFloat) for
+   anything else, so existing isNaN() checks at every call site keep
+   working unchanged. */
+const FRACTION_GLYPHS = {
+  '¼':0.25, '½':0.5, '¾':0.75, '⅓':1/3, '⅔':2/3,
+  '⅕':0.2, '⅖':0.4, '⅗':0.6, '⅘':0.8,
+  '⅙':1/6, '⅚':5/6, '⅛':0.125, '⅜':0.375, '⅝':0.625, '⅞':0.875
+};
+
+function parseQtyInput(raw){
+  const s = String(raw ?? '').trim();
+  if(s === '') return NaN;
+  if(/^-?\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+
+  let m = s.match(/^(-?\d+)\s*\/\s*(\d+)$/);           // "3/4"
+  if(m) return Number(m[1]) / Number(m[2]);
+
+  m = s.match(/^(-?\d+)[\s-]+(\d+)\s*\/\s*(\d+)$/);    // "1 1/2" or "1-1/2"
+  if(m){
+    const whole = Number(m[1]), num = Number(m[2]), den = Number(m[3]);
+    return whole + (whole < 0 ? -1 : 1) * (num / den);
+  }
+
+  if(FRACTION_GLYPHS[s] != null) return FRACTION_GLYPHS[s];  // "½"
+
+  m = s.match(/^(-?\d+)\s*([¼½¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])$/);       // "1½"
+  if(m && FRACTION_GLYPHS[m[2]] != null) return Number(m[1]) + FRACTION_GLYPHS[m[2]];
+
+  return NaN;
+}
+
 function getStatus(item){
   if(item.stock<=0) return 'out';
   if(item.stock<=item.threshold) return 'low';

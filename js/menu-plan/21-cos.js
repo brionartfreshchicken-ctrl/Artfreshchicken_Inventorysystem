@@ -402,7 +402,8 @@ function renderCos(){
             </select></td>
             <td><div class="qty-cell">
               <input class="cos-line-input num" data-cl="qtyNum" data-fid="${f.id}" data-id="${l.id}"
-                     type="number" min="0" step="any" value="${l.qtyNum ?? ''}" placeholder="0"/>
+                     type="text" inputmode="decimal" value="${l.qtyNum ?? ''}" placeholder="0, 1/2, 1 1/2…"
+                     title="Fractions work too — 1/2, 3/4, 1 1/2"/>
               <select class="cos-line-unit" data-cl="qtyUnit" data-fid="${f.id}" data-id="${l.id}">
                 ${QTY_UNITS.map(u=>`<option value="${u}" ${u===(l.qtyUnit||'pcs')?'selected':''}>${u}</option>`).join('')}
               </select>
@@ -546,7 +547,9 @@ document.getElementById('cos-foods').addEventListener(ev, e=>{
     line.manual = true;
     cl.classList.remove('auto');
   }else{
-    line[field] = cl.value;
+    // Quantity accepts fractions ("1/2", "1 1/2", "½") — parsed to a
+    // decimal for storage/math; every other field keeps the raw string.
+    line[field] = (field === 'qtyNum') ? parseQtyInput(cl.value) : cl.value;
     if(field === 'qtyNum' || field === 'qtyUnit') syncQtyText(line);
     if(field === 'priceNum' || field === 'priceMode') syncUnitText(line);
 

@@ -132,7 +132,7 @@ function openRecipeModal(mode, recipe){
           ${ingredientItems.map(i=>`<option value="${escapeHtml(i.name)}" data-unit="${escapeHtml(i.unit)}">${escapeHtml(i.name)} (${escapeHtml(i.unit)})</option>`).join('')}
         </select></div>
       <div class="field"><label>Quantity</label>
-        <input id="rc-ing-qty" type="number" min="0" step="any" value="1"/></div>
+        <input id="rc-ing-qty" type="text" inputmode="decimal" placeholder="e.g. 1.5, 1/2, or 1 1/2" value="1"/></div>
     </div>
     <button class="btn small" id="btnAddRecipeLine">+ Add Ingredient</button>
     ` : `<div class="hint" style="color:var(--yellow);">No ingredient items yet — add some on the Products page first.</div>`}
@@ -152,8 +152,8 @@ function openRecipeModal(mode, recipe){
   if(addLineBtn) addLineBtn.addEventListener('click', ()=>{
     const sel = document.getElementById('rc-ing');
     const opt = sel.selectedOptions[0];
-    const qty = parseFloat(document.getElementById('rc-ing-qty').value);
-    if(isNaN(qty) || qty<=0){ toast('Enter a quantity greater than 0', true); return; }
+    const qty = parseQtyInput(document.getElementById('rc-ing-qty').value);
+    if(isNaN(qty) || qty<=0){ toast('Enter a quantity greater than 0 (fractions like 1/2 work too)', true); return; }
     recipeDraftLines.push({ name: sel.value, qtyNum: qty, qtyUnit: opt.dataset.unit });
     document.getElementById('rc-ing-qty').value = 1;
     renderRecipeLines();
