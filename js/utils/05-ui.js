@@ -41,6 +41,47 @@ function openModal(title, bodyHtml, footHtml){
 
 function closeModal(){ overlay.classList.remove('active'); }
 
+/* "I paid ₱X for Y [unit], what's the price for one [unit]?" — turns
+   that manual division into a fill-in-the-blanks tool. Opens as its own
+   modal, so only call this from somewhere that ISN'T already showing
+   the shared modal (there's one overlay/#modal in the whole app — see
+   the Add/Edit Product form for the inline version used there instead,
+   since that form IS the modal already). onApply(perUnit) receives the
+   computed price per 1 unit; nothing is applied until "Use This Price". */
+function openPriceCalculator(unitLabel, onApply){
+  const label = unitLabel || 'unit';
+  openModal('Calculate Price per Unit', `
+    <div class="hint" style="margin-bottom:12px;">Enter what you paid and how much you got — this works out the price for one ${escapeHtml(label)}.</div>
+    <div class="field-row">
+      <div class="field"><label>Amount Paid (₱)</label>
+        <input id="pc-paid" type="number" min="0" step="any" placeholder="0.00"/></div>
+      <div class="field"><label>Quantity Received (${escapeHtml(label)})</label>
+        <input id="pc-qty" type="number" min="0" step="any" placeholder="0"/></div>
+    </div>
+    <div class="hint" id="pc-result" style="margin-top:6px;"></div>
+  `, `<button class="btn ghost" id="pc-cancel">Cancel</button>
+      <button class="btn primary" id="pc-use">Use This Price</button>`);
+
+  function compute(){
+    const paid = parseFloat(document.getElementById('pc-paid').value);
+    const qty = parseFloat(document.getElementById('pc-qty').value);
+    const box = document.getElementById('pc-result');
+    if(isNaN(paid) || isNaN(qty) || qty<=0){ box.innerHTML = ''; return null; }
+    const perUnit = paid / qty;
+    box.innerHTML = `<span class="calc-caption">🧮 ${peso(paid)} ÷ ${qty} ${escapeHtml(label)}</span>Price per ${escapeHtml(label)}: <b>${peso(perUnit)}</b>`;
+    return perUnit;
+  }
+  ['pc-paid','pc-qty'].forEach(id => document.getElementById(id).addEventListener('input', compute));
+  document.getElementById('pc-cancel').addEventListener('click', closeModal);
+  document.getElementById('pc-use').addEventListener('click', ()=>{
+    const perUnit = compute();
+    if(perUnit === null){ toast('Enter a paid amount and quantity first', true); return; }
+    onApply(Math.round(perUnit * 10000) / 10000);   // keep sub-peso precision for cheap-per-gram items
+    closeModal();
+  });
+  document.getElementById('pc-paid').focus();
+}
+
 document.getElementById('modalClose').addEventListener('click', closeModal);
 
 overlay.addEventListener('click', e=>{ if(e.target===overlay) closeModal(); });

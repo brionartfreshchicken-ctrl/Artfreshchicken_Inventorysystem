@@ -176,7 +176,20 @@ function openItemModal(mode, presetCategory, item){
     </div>
     <div class="hint" style="margin:-4px 0 12px;">How many you have on hand right now. You can add more later with Stock In or a Purchase.</div>
     <div class="field-row">
-      <div class="field"><label id="lbl-cost">${isIngredient?'Cost / Unit':'Cost (cost per unit)'}</label><input id="f-cost" type="number" min="0" step="any" placeholder="0.00" value="${item?item.cost:''}"/></div>
+      <div class="field"><label id="lbl-cost">${isIngredient?'Cost / Unit':'Cost (cost per unit)'}</label>
+        <input id="f-cost" type="number" min="0" step="any" placeholder="0.00" value="${item?item.cost:''}"/>
+        <button type="button" class="btn small ghost" id="f-cost-calc-toggle" style="margin-top:6px;">🧮 Calculate from a purchase</button>
+        <div id="f-cost-calc-box" style="display:none;margin-top:8px;padding:10px;border:1px dashed var(--border);border-radius:8px;">
+          <div class="field-row">
+            <div class="field"><label>Amount Paid (₱)</label>
+              <input id="f-cost-calc-paid" type="number" min="0" step="any" placeholder="0.00"/></div>
+            <div class="field"><label>Quantity Received</label>
+              <input id="f-cost-calc-qty" type="number" min="0" step="any" placeholder="0"/></div>
+          </div>
+          <div class="hint" id="f-cost-calc-result"></div>
+          <button type="button" class="btn small primary" id="f-cost-calc-use">Use This Price</button>
+        </div>
+      </div>
       <div class="field" id="wrap-selling" style="${isIngredient?'display:none;':''}"><label>Selling Price</label><input id="f-selling" type="number" min="0" step="any" placeholder="0.00" value="${item&&item.selling!=null?item.selling:''}"/></div>
     </div>
     <div class="hint" id="calc-preview"></div>
@@ -251,6 +264,40 @@ function openItemModal(mode, presetCategory, item){
     if(el) el.addEventListener('input', updatePreview);
   });
   updatePreview();
+
+  /* "I paid ₱X for Y [unit], what's the price for one [unit]?" — an
+     inline reveal rather than a separate modal, since this form IS
+     already the app's one shared modal (nesting isn't possible). */
+  function currentUnitLabel(){
+    const sel = document.getElementById('f-unit');
+    return (sel.value === '__other' ? document.getElementById('f-unit-other').value.trim() : sel.value) || 'unit';
+  }
+  const costCalcBox = document.getElementById('f-cost-calc-box');
+  document.getElementById('f-cost-calc-toggle').addEventListener('click', ()=>{
+    const showing = costCalcBox.style.display !== 'none';
+    costCalcBox.style.display = showing ? 'none' : 'block';
+    if(!showing) document.getElementById('f-cost-calc-paid').focus();
+  });
+  function computeCostCalc(){
+    const paid = parseFloat(document.getElementById('f-cost-calc-paid').value);
+    const qty = parseFloat(document.getElementById('f-cost-calc-qty').value);
+    const box = document.getElementById('f-cost-calc-result');
+    const label = currentUnitLabel();
+    if(isNaN(paid) || isNaN(qty) || qty<=0){ box.innerHTML = ''; return null; }
+    const perUnit = paid / qty;
+    box.innerHTML = `<span class="calc-caption">🧮 ${peso(paid)} ÷ ${qty} ${escapeHtml(label)}</span>Price per ${escapeHtml(label)}: <b>${peso(perUnit)}</b>`;
+    return perUnit;
+  }
+  ['f-cost-calc-paid','f-cost-calc-qty'].forEach(id=>
+    document.getElementById(id).addEventListener('input', computeCostCalc));
+  document.getElementById('f-cost-calc-use').addEventListener('click', ()=>{
+    const perUnit = computeCostCalc();
+    if(perUnit === null){ toast('Enter a paid amount and quantity first', true); return; }
+    const costInput = document.getElementById('f-cost');
+    costInput.value = Math.round(perUnit * 10000) / 10000;
+    costInput.dispatchEvent(new Event('input', { bubbles: true }));   // reuses updatePreview()
+    costCalcBox.style.display = 'none';
+  });
 
   document.getElementById('f-cancel').addEventListener('click', closeModal);
 

@@ -416,6 +416,8 @@ function renderCos(){
                 <option value="unit"  ${!priceIsTotal(l)?'selected':''}>per ${escapeHtml(l.qtyUnit||'pcs')}</option>
                 <option value="total" ${ priceIsTotal(l)?'selected':''}>flat total (doesn't scale)</option>
               </select>
+              <button type="button" class="btn small ghost" data-cl-calc="${l.id}" data-fid="${f.id}"
+                title="Work out the price per ${escapeHtml(l.qtyUnit||'pcs')} from what you paid">🧮</button>
             </div></td>
             <td><input class="cos-line-input num${l.manual?'':' auto'}" data-cl="total" data-fid="${f.id}" data-id="${l.id}"
                   type="number" min="0" step="any" value="${l.total ?? ''}" placeholder="0"
@@ -749,6 +751,19 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
     saveState(); renderCos();
     scheduleCosFoodSync(f);
     toast(got !== null ? `Recosted to ${peso(got)}` : 'Add a number to quantity and unit price', got === null);
+    return;
+  }
+
+  const calc = e.target.closest('[data-cl-calc]');
+  if(calc){
+    const f = cosFood(calc.dataset.fid); if(!f) return;
+    const line = (f.lines||[]).find(l => l.id === Number(calc.dataset.clCalc)); if(!line) return;
+    openPriceCalculator(line.qtyUnit || 'pcs', (perUnit)=>{
+      const input = document.querySelector(`[data-cl="priceNum"][data-fid="${f.id}"][data-id="${line.id}"]`);
+      if(!input) return;
+      input.value = perUnit;
+      input.dispatchEvent(new Event('input', { bubbles: true }));   // reuses the existing priceNum handler
+    });
     return;
   }
 
