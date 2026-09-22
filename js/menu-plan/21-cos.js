@@ -101,6 +101,16 @@ function planTotals(plan){
 
 const QTY_UNITS = ['pcs','kg','g','L','ml','pack','bottle','can','sachet','bulb','tray','cup','tbsp','tsp'];
 
+/* Quick-pick presets for a quantity field — values are text, in exactly
+   the format parseQtyInput() (04-format.js) already accepts, so picking
+   one goes through the same parsing as typing it by hand. */
+const QTY_PRESETS = ['1/4','1/3','1/2','2/3','3/4','1','1 1/2','2','3','5','10'];
+
+function qtyPresetOptionsHtml(){
+  return `<option value="">¼▾</option>` +
+    QTY_PRESETS.map(p => `<option value="${p}">${p}</option>`).join('');
+}
+
 /* ---------- Unit conversion ----------
    Only mass (g/kg) and volume (ml/L/tbsp/tsp/cup) convert automatically
    — both have a fixed physical relationship. Count-type units (pcs,
@@ -404,6 +414,8 @@ function renderCos(){
               <input class="cos-line-input num" data-cl="qtyNum" data-fid="${f.id}" data-id="${l.id}"
                      type="text" inputmode="decimal" value="${l.qtyNum ?? ''}" placeholder="0, 1/2, 1 1/2…"
                      title="Fractions work too — 1/2, 3/4, 1 1/2"/>
+              <select class="cos-line-unit" data-cl-preset="${l.id}" data-fid="${f.id}"
+                      title="Quick pick a common quantity" style="max-width:60px;">${qtyPresetOptionsHtml()}</select>
               <select class="cos-line-unit" data-cl="qtyUnit" data-fid="${f.id}" data-id="${l.id}">
                 ${QTY_UNITS.map(u=>`<option value="${u}" ${u===(l.qtyUnit||'pcs')?'selected':''}>${u}</option>`).join('')}
               </select>
@@ -521,6 +533,18 @@ function refreshCosNumbers(){
 // select elements fire change, inputs fire input — listen for both
 ['input','change'].forEach(ev =>
 document.getElementById('cos-foods').addEventListener(ev, e=>{
+  const preset = e.target.closest('[data-cl-preset]');
+  if(preset){
+    if(!preset.value) return;   // the "¼▾" placeholder itself does nothing
+    const input = document.querySelector(`[data-cl="qtyNum"][data-fid="${preset.dataset.fid}"][data-id="${preset.dataset.clPreset}"]`);
+    if(input){
+      input.value = preset.value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));   // reuses the existing qtyNum handler
+    }
+    preset.value = '';   // reset so it's ready for the next pick
+    return;
+  }
+
   const fd = e.target.closest('[data-fd]');
   if(fd){
     const f = cosFood(fd.dataset.id); if(!f) return;

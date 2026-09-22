@@ -132,7 +132,10 @@ function openRecipeModal(mode, recipe){
           ${ingredientItems.map(i=>`<option value="${escapeHtml(i.name)}" data-unit="${escapeHtml(i.unit)}">${escapeHtml(i.name)} (${escapeHtml(i.unit)})</option>`).join('')}
         </select></div>
       <div class="field"><label>Quantity</label>
-        <input id="rc-ing-qty" type="text" inputmode="decimal" placeholder="e.g. 1.5, 1/2, or 1 1/2" value="1"/></div>
+        <div style="display:flex;gap:6px;">
+          <input id="rc-ing-qty" type="text" inputmode="decimal" placeholder="e.g. 1.5, 1/2, or 1 1/2" value="1" style="flex:1;"/>
+          <select id="rc-ing-qty-preset" title="Quick pick a common quantity" style="max-width:60px;">${qtyPresetOptionsHtml()}</select>
+        </div></div>
     </div>
     <button class="btn small" id="btnAddRecipeLine">+ Add Ingredient</button>
     ` : `<div class="hint" style="color:var(--yellow);">No ingredient items yet — add some on the Products page first.</div>`}
@@ -147,6 +150,13 @@ function openRecipeModal(mode, recipe){
 
   renderRecipeLines();
   ['rc-servings','rc-price'].forEach(id=>document.getElementById(id).addEventListener('input', updateRecipePreview));
+
+  const rcQtyPreset = document.getElementById('rc-ing-qty-preset');
+  if(rcQtyPreset) rcQtyPreset.addEventListener('change', ()=>{
+    if(!rcQtyPreset.value) return;   // the "¼▾" placeholder itself does nothing
+    document.getElementById('rc-ing-qty').value = rcQtyPreset.value;
+    rcQtyPreset.value = '';          // reset so it's ready for the next pick
+  });
 
   const addLineBtn = document.getElementById('btnAddRecipeLine');
   if(addLineBtn) addLineBtn.addEventListener('click', ()=>{
