@@ -282,6 +282,13 @@ input::placeholder{color:var(--dimmer);}
   text-transform:uppercase;color:var(--teal);
 }
 .card-head .hint{margin-left:auto;font-size:12px;}
+.card-head.collapsible-head{cursor:pointer;user-select:none;}
+.card-head.collapsible-head:hover .ct{color:var(--teal-dark,var(--teal));}
+.collapse-arrow{
+  margin-left:auto;font-size:11px;color:var(--dim);
+  transition:transform .18s ease;
+}
+.card-head.collapsible-head.collapsed .collapse-arrow{transform:rotate(-90deg);}
 /* Wide tables (Products, Stock Movements, Purchases, Reports…) are
    wider than the card on tablet/narrow-laptop screens. .card itself
    keeps overflow:hidden (rounded corners, collapsed food cards, etc.

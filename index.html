@@ -177,11 +177,13 @@
       </div>
       <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:18px;">
         <div class="card">
-          <div class="card-head"><div class="ct">Low Stock Alerts</div></div>
+          <div class="card-head collapsible-head" data-toggle-target="alertsBox">
+            <div class="ct">Low Stock Alerts</div><span class="collapse-arrow">▾</span></div>
           <div class="card-body" id="alertsBox"></div>
         </div>
         <div class="card">
-          <div class="card-head"><div class="ct">Recent Activity</div></div>
+          <div class="card-head collapsible-head" data-toggle-target="activityBox">
+            <div class="ct">Recent Activity</div><span class="collapse-arrow">▾</span></div>
           <div class="card-body" id="activityBox"></div>
         </div>
       </div>

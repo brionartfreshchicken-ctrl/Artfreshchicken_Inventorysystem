@@ -41,6 +41,22 @@ function openModal(title, bodyHtml, footHtml){
 
 function closeModal(){ overlay.classList.remove('active'); }
 
+/* Generic collapsible card header — click a <div class="card-head
+   collapsible-head" data-toggle-target="someId"> to hide/show
+   #someId (typically that card's own .card-body). Delegated on the
+   whole document so it works for any card added later, not just the
+   Dashboard's Low Stock Alerts / Recent Activity. State is UI-only —
+   it doesn't persist across a reload, same as which nav page is open. */
+document.addEventListener('click', e=>{
+  const head = e.target.closest('.collapsible-head');
+  if(!head) return;
+  const body = document.getElementById(head.dataset.toggleTarget);
+  if(!body) return;
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? '' : 'none';
+  head.classList.toggle('collapsed', !collapsed);
+});
+
 /* "I paid ₱X for Y [unit], what's the price for one [unit]?" — turns
    that manual division into a fill-in-the-blanks tool. Opens as its own
    modal, so only call this from somewhere that ISN'T already showing
