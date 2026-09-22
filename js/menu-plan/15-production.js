@@ -27,20 +27,41 @@ function computeProductionPreview(){
   if(!recipe || qty<=0){ if(box) box.innerHTML=''; return null; }
 
   const multiplier = recipe.servings>0 ? qty/recipe.servings : 0;
+  // need/unit end up in the ITEM's own stocked unit (converting from the
+  // recipe line's unit when they differ — see convertQty in 21-cos.js) —
+  // deducting plannedNeed directly against item.stock without this would
+  // silently corrupt stock whenever a recipe is written in a different
+  // (but equivalent) unit than the ingredient is stocked in.
   const lines = (recipe.lines||[]).map(l=>{
     const item = ingredientByName(l.name);
-    const need = (Number(l.qtyNum)||0) * multiplier;
-    return { item, name: l.name, unit: l.qtyUnit, need };
+    const plannedNeed = (Number(l.qtyNum)||0) * multiplier;
+    let need = plannedNeed, mismatch = false;
+    if(item){
+      if(l.qtyUnit === item.unit){
+        need = plannedNeed;
+      }else{
+        const converted = convertQty(plannedNeed, l.qtyUnit, item.unit);
+        if(converted === null) mismatch = true;
+        else need = converted;
+      }
+    }
+    return { item, name: l.name, unit: item ? item.unit : l.qtyUnit, plannedNeed, plannedUnit: l.qtyUnit, need, mismatch };
   });
-  const totalCost = lines.reduce((t,l)=>t + (l.item ? l.need*l.item.cost : 0), 0);
-  const short = lines.filter(l=>!l.item || l.need > l.item.stock);
+  const totalCost = lines.reduce((t,l)=>t + (l.item && !l.mismatch ? l.need*l.item.cost : 0), 0);
+  const short = lines.filter(l=>!l.item || l.mismatch || l.need > l.item.stock);
 
   if(box){
     box.innerHTML = `<span class="calc-caption">🧮 Calculated automatically — estimated from the recipe</span>` +
-      lines.map(l=>`${escapeHtml(l.name)}: ${round2(l.need)} ${escapeHtml(l.unit)}` +
-        (!l.item ? ` <span style="color:var(--red)">— no matching ingredient item</span>`
-          : (l.need>l.item.stock ? ` <span style="color:var(--red)">— only ${round2(l.item.stock)} on hand</span>` : ''))
-      ).join('<br>') +
+      lines.map(l=>{
+        const converted = l.item && !l.mismatch && l.unit !== l.plannedUnit;
+        const shownQty = converted
+          ? `${round2(l.plannedNeed)} ${escapeHtml(l.plannedUnit)} (${round2(l.need)} ${escapeHtml(l.unit)})`
+          : `${round2(l.plannedNeed)} ${escapeHtml(l.plannedUnit)}`;
+        return `${escapeHtml(l.name)}: ${shownQty}` +
+          (!l.item ? ` <span style="color:var(--red)">— no matching ingredient item</span>`
+            : l.mismatch ? ` <span style="color:var(--red)">— stocked in ${escapeHtml(l.item.unit)}, can't convert from ${escapeHtml(l.plannedUnit)}</span>`
+            : (l.need>l.item.stock ? ` <span style="color:var(--red)">— only ${round2(l.item.stock)} on hand</span>` : ''));
+      }).join('<br>') +
       `<br>Total Ingredient Cost: <b>${peso(totalCost)}</b>` +
       (recipe.linkedItemId ? `<br>New Cost / Serving (updates ${escapeHtml(displayName(byId(recipe.linkedItemId))||'')}): <b>${peso(qty>0?totalCost/qty:0)}</b>` : '<br><span class="muted">Prep only — no sellable item will be stocked.</span>');
   }
@@ -78,7 +99,13 @@ document.getElementById('btnCompleteProduction').addEventListener('click', async
   if(!preview || !preview.recipe){ toast('Select a recipe and a quantity first', true); return; }
   if(preview.qty <= 0){ toast('Enter a quantity greater than 0', true); return; }
   if(!preview.lines.length){ toast('This recipe has no ingredients to deduct', true); return; }
-  if(preview.short.length){ toast('Not enough ingredients on hand for this quantity', true); return; }
+  if(preview.short.length){
+    const hasMismatch = preview.lines.some(l => l.mismatch);
+    toast(hasMismatch
+      ? "Some ingredients' units can't be converted — check the preview above"
+      : 'Not enough ingredients on hand for this quantity', true);
+    return;
+  }
 
   const producedBy = document.getElementById('pr-producedby').value.trim() || (currentUser?currentUser.name:'—');
 

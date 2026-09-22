@@ -101,6 +101,36 @@ function planTotals(plan){
 
 const QTY_UNITS = ['pcs','kg','g','L','ml','pack','bottle','can','sachet','bulb','tray','cup','tbsp','tsp'];
 
+/* ---------- Unit conversion ----------
+   Only mass (g/kg) and volume (ml/L/tbsp/tsp/cup) convert automatically
+   — both have a fixed physical relationship. Count-type units (pcs,
+   pack, bottle, can, sachet, bulb, tray) don't: a "pack" isn't a fixed
+   number of "pcs" across every product, so those stay exact-match-only
+   — same reason an item's own `conv` field is always labeled
+   "estimated" and never used in real deduction math. tbsp/tsp/cup use
+   the metric cooking measures (15 / 5 / 250 ml) common in PH recipes. */
+const UNIT_CONVERSION = {
+  g:    { group: 'mass',   perBase: 1 },
+  kg:   { group: 'mass',   perBase: 1000 },
+  ml:   { group: 'volume', perBase: 1 },
+  L:    { group: 'volume', perBase: 1000 },
+  tbsp: { group: 'volume', perBase: 15 },
+  tsp:  { group: 'volume', perBase: 5 },
+  cup:  { group: 'volume', perBase: 250 },
+};
+
+/* Converts `qty` from `fromUnit` to `toUnit`. Returns null when either
+   unit isn't a convertible one, or the two are in different groups
+   (e.g. kg -> ml — not a unit conversion, an unrelated measure) —
+   refusing beats guessing wrong for something tracking real stock. */
+function convertQty(qty, fromUnit, toUnit){
+  if(fromUnit === toUnit) return qty;
+  const from = UNIT_CONVERSION[fromUnit];
+  const to = UNIT_CONVERSION[toUnit];
+  if(!from || !to || from.group !== to.group) return null;
+  return qty * from.perBase / to.perBase;
+}
+
 /* A price can mean two things and both are normal:
      'unit'  — ₱460 per kilo, so 2 kg costs ₱920
      'total' — ₱460 for the whole 2 kg
@@ -628,8 +658,12 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
 
     const rows = plan.take.map(t=>{
       const after = Math.round((t.item.stock - Math.min(t.qty, t.item.stock))*1000)/1000;
+      const converted = t.plannedUnit !== t.unit;
+      const usedCell = converted
+        ? `${round2(t.plannedQty)} ${escapeHtml(t.plannedUnit)} <span class="muted">(${round2(t.qty)} ${escapeHtml(t.unit)})</span>`
+        : `${round2(t.qty)} ${escapeHtml(t.unit)}`;
       return `<tr><td>${escapeHtml(t.name)}</td>
-        <td class="num">${t.qty} ${escapeHtml(t.unit)}</td>
+        <td class="num">${usedCell}</td>
         <td class="num muted">${t.item.stock} → ${after}</td></tr>`;
     }).join('');
 
@@ -1125,12 +1159,22 @@ function planDeduction(food){
 
     const item = ingredientByName(name);
     if(!item){ missing.push(name); return; }
-    if((l.qtyUnit||'') !== item.unit){
-      mismatch.push({name, planned:l.qtyUnit||'—', stocked:item.unit});
-      return;
+
+    const plannedUnit = l.qtyUnit || '';
+    let deductQty = qty;
+    if(plannedUnit !== item.unit){
+      const converted = convertQty(qty, plannedUnit, item.unit);
+      if(converted === null){
+        mismatch.push({name, planned:plannedUnit||'—', stocked:item.unit});
+        return;
+      }
+      deductQty = converted;
     }
-    if(qty > item.stock) short.push({name, need:qty, have:item.stock, unit:item.unit});
-    take.push({item, qty, unit:item.unit, name:item.name});
+    if(deductQty > item.stock) short.push({name, need:deductQty, have:item.stock, unit:item.unit});
+    take.push({
+      item, qty:deductQty, unit:item.unit, name:item.name,
+      plannedQty:qty, plannedUnit:plannedUnit||item.unit
+    });
   });
   return {take, missing, mismatch, short};
 }
