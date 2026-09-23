@@ -558,6 +558,7 @@ body.staff-mode .money-col{display:none;}
 }
 .cart-qty button:hover{border-color:var(--teal);color:var(--teal);}
 .cart-qty .cq-num{min-width:30px;text-align:center;font-size:13px;font-weight:700;}
+.cart-qty button.cq-weigh{width:auto;padding:0 8px;font-size:11.5px;font-weight:700;white-space:nowrap;}
 .cart-empty{padding:36px 18px;text-align:center;color:var(--dimmer);font-size:12.5px;}
 .cart-totals{padding:15px 18px;border-top:1px solid var(--border);background:var(--panel2);}
 .ct-line{display:flex;justify-content:space-between;font-size:12.5px;color:var(--dim);padding:3px 0;}

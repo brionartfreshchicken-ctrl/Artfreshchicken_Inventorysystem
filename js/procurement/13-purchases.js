@@ -72,6 +72,19 @@ function renderPurchases(){
     : `<tr class="empty-row"><td colspan="7">No purchases recorded yet.</td></tr>`;
 }
 
+/* "₱115 / 500g" on a supplier's price tag isn't the unit cost this form
+   wants (a price per 1 unit) — it's a price for a reference weight. This
+   reuses the same paid÷qty calculator as the Add/Edit Product Cost field,
+   just pointed at pu-unitcost instead: "amount paid" = the tag's price,
+   "quantity received" = the tag's reference weight (500g), and the result
+   is the per-unit cost this form actually needs. */
+document.getElementById('btnPuCostCalc').addEventListener('click', ()=>{
+  const item = byId(Number(document.getElementById('pu-item').value));
+  openPriceCalculator(item ? item.unit : 'unit', perUnit=>{
+    document.getElementById('pu-unitcost').value = perUnit;
+  });
+});
+
 document.getElementById('btnAddPurchaseLine').addEventListener('click', ()=>{
   const itemId = Number(document.getElementById('pu-item').value);
   const item = byId(itemId);

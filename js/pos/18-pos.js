@@ -97,15 +97,18 @@ function renderCart(){
   box.innerHTML = cart.length ? cart.map(c=>{
     const i = byId(c.itemId);
     if(!i) return '';
+    const weighed = isWeighedUnit(i.unit);
     return `<div class="cart-row">
       <div>
         <div class="cr-name">${escapeHtml(displayName(i))}</div>
-        <div class="cr-sub">${peso(i.selling)} each · ${peso(c.qty*i.selling)}</div>
+        <div class="cr-sub">${peso(i.selling)} / ${escapeHtml(i.unit)} · ${peso(c.qty*i.selling)}</div>
       </div>
       <div class="cart-qty">
-        <button data-cart="minus" data-id="${i.id}" title="Less">−</button>
+        ${weighed
+          ? `<button class="cq-weigh" data-cart="reweigh" data-id="${i.id}" title="Re-enter the scale weight">⚖ ${Math.round(c.qty*100)/100} ${escapeHtml(i.unit)}</button>`
+          : `<button data-cart="minus" data-id="${i.id}" title="Less">−</button>
         <span class="cq-num">${Math.round(c.qty*100)/100}</span>
-        <button data-cart="plus" data-id="${i.id}" title="More" ${c.qty>=i.stock?'disabled':''}>+</button>
+        <button data-cart="plus" data-id="${i.id}" title="More" ${c.qty>=i.stock?'disabled':''}>+</button>`}
         <button data-cart="drop" data-id="${i.id}" title="Remove" style="color:var(--red);">×</button>
       </div>
     </div>`;
@@ -281,6 +284,7 @@ document.getElementById('posGrid').addEventListener('click', e=>{
   if(!btn) return;
   const item = byId(Number(btn.dataset.sell));
   if(!item) return;
+  if(isWeighedUnit(item.unit)) return openWeighModal(item);
   const line = cart.find(c=>c.itemId===item.id);
   const already = line ? line.qty : 0;
   if(already + 1 > item.stock) return toast(`Only ${item.stock} ${item.unit} of ${item.name} left`, true);
@@ -304,10 +308,54 @@ document.getElementById('cartBox').addEventListener('click', e=>{
   }
   if(btn.dataset.cart === 'minus') line.qty -= 1;
   if(btn.dataset.cart === 'drop')  line.qty = 0;
+  if(btn.dataset.cart === 'reweigh') return openWeighModal(item, line.qty);
   if(line.qty <= 0) cart = cart.filter(c=>c.itemId !== id);
 
   renderPOS(); renderCart();
 });
+
+/* ---------- Weigh & Price ----------
+   For items priced by weight/volume (a Products unit of g/kg/ml/L/tbsp/
+   tsp/cup) — e.g. Bihon at ₱115/500g, meaning `selling` is already stored
+   as the price for 1 of that unit. Clicking the tile (or the cart's ⚖
+   button) opens this instead of the usual +1-per-tap add, so the cashier
+   types the actual reading off a scale and the total comes out right —
+   no mental "115 ÷ 500 × 1310" math at the counter. Reuses the same
+   UNIT_CONVERSION groups as Menu Plan ingredient deduction (21-cos.js) —
+   count-type units (pcs, pack, bottle, ...) aren't weighed, so they keep
+   the plain +/- stepper. */
+function isWeighedUnit(unit){ return !!UNIT_CONVERSION[unit]; }
+
+function openWeighModal(item, existingQty){
+  openModal(`Weigh: ${displayName(item)}`, `
+    <div class="hint" style="margin-bottom:12px;">Type the weight shown on the scale, in ${escapeHtml(item.unit)} — priced at ${peso(item.selling)} per ${escapeHtml(item.unit)}.</div>
+    <div class="field"><label>Weight (${escapeHtml(item.unit)})</label>
+      <input id="wm-qty" type="number" min="0" step="any" placeholder="0" value="${existingQty!=null?existingQty:''}"/></div>
+    <div class="hint" id="wm-result" style="margin-top:6px;"></div>
+  `, `<button class="btn ghost" id="wm-cancel">Cancel</button>
+      <button class="btn primary" id="wm-add">${existingQty!=null?'Update':'Add to Cart'}</button>`);
+
+  function compute(){
+    const qty = parseFloat(document.getElementById('wm-qty').value);
+    const box = document.getElementById('wm-result');
+    if(isNaN(qty) || qty<=0){ box.innerHTML=''; return null; }
+    box.innerHTML = `<span class="calc-caption">⚖ ${qty} ${escapeHtml(item.unit)} × ${peso(item.selling)}</span>Total: <b>${peso(qty*item.selling)}</b>`;
+    return qty;
+  }
+  document.getElementById('wm-qty').addEventListener('input', compute);
+  document.getElementById('wm-cancel').addEventListener('click', closeModal);
+  document.getElementById('wm-add').addEventListener('click', ()=>{
+    const qty = compute();
+    if(qty === null){ toast('Enter the weight first', true); return; }
+    if(qty > item.stock){ toast(`Only ${item.stock} ${item.unit} of ${item.name} left`, true); return; }
+    const line = cart.find(c=>c.itemId===item.id);
+    if(line) line.qty = qty; else cart.push({itemId:item.id, qty});
+    closeModal();
+    renderPOS(); renderCart();
+  });
+  compute();
+  document.getElementById('wm-qty').focus();
+}
 
 document.getElementById('btnClearCart').addEventListener('click', ()=>{
   if(!cart.length) return;
