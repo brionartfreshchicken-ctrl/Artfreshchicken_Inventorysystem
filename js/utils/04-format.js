@@ -57,7 +57,7 @@ function getStatus(item){
 function statusLabel(s){ return s==='in'?'In Stock':s==='low'?'Low Stock':'Out of Stock'; }
 
 function catLabel(c){
-  return {snack:'Snack', drink:'Drink', food:'Food', ingredient:'Ingredient'}[c] || 'Item';
+  return {snack:'Snack', drink:'Drink', food:'Food', ingredient:'Ingredient', tools:'Tool'}[c] || 'Item';
 }
 
 function tubo(item){ return item.selling!=null ? (item.selling - item.cost) : null; }

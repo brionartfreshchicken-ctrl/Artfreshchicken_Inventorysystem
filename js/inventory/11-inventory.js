@@ -189,10 +189,10 @@ function renderInventory(){
     !(i.category==='food' && i.stock<=0)   // out-of-stock food comes off Products entirely — see the hint below
   );
 
-  /* Ingredients are never sold on their own, so Selling, Profit and Total Profit
-     would only ever show a dash. Drop those columns when the filter is on
-     ingredients, or when everything showing happens to be an ingredient. */
-  const sellCols = !(items.length && items.every(i => i.category === 'ingredient'));
+  /* Ingredients and Tools are never sold on their own, so Selling, Profit
+     and Total Profit would only ever show a dash. Drop those columns when
+     the filter is on one of those, or when everything showing is. */
+  const sellCols = !(items.length && items.every(i => i.category === 'ingredient' || i.category === 'tools'));
 
   document.getElementById('head-inventory').innerHTML =
     `<th>Product</th><th>Size</th><th>Category</th><th>Stock</th><th>Cost</th>` +

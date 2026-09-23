@@ -1,4 +1,4 @@
--- FoodTrack: full Supabase schema (all migrations 0001-0020 concatenated)
+-- FoodTrack: full Supabase schema (all migrations 0001-0021 concatenated)
 -- Paste this whole file into the Supabase SQL Editor and click Run.
 
 -- ============================================================
@@ -102,7 +102,6 @@ create trigger profiles_prevent_role_escalation
   before update on public.profiles
   for each row execute function public.prevent_self_role_escalation();
 
-
 -- ============================================================
 -- 0002: suppliers
 -- ============================================================
@@ -118,7 +117,6 @@ create table public.suppliers (
   status text not null default 'active' check (status in ('active', 'inactive')),
   created_at timestamptz not null default now()
 );
-
 
 -- ============================================================
 -- 0003: Menu Plan (Cost-of-Sales planning) — plans and foods,
@@ -161,7 +159,6 @@ create table public.cos_food_lines (
   manual boolean not null default false
 );
 
-
 -- ============================================================
 -- 0004: items (Products — snacks, drinks, food, ingredients)
 -- ============================================================
@@ -203,7 +200,6 @@ create trigger items_set_updated_at
   before update on public.items
   for each row execute function public.set_updated_at();
 
-
 -- ============================================================
 -- 0005: close the circular reference — a Menu Plan food, once saved,
 -- mirrors itself as a sellable POS item (items.source_food_id), and
@@ -213,7 +209,6 @@ create trigger items_set_updated_at
 alter table public.cos_foods
   add constraint cos_foods_linked_item_id_fkey
   foreign key (linked_item_id) references public.items(id) on delete set null;
-
 
 -- ============================================================
 -- 0006: Purchases (procurement)
@@ -238,7 +233,6 @@ create table public.purchase_lines (
   qty numeric not null,
   unit_cost numeric not null
 );
-
 
 -- ============================================================
 -- 0007: Recipes and Production
@@ -283,7 +277,6 @@ create table public.production_ingredients (
   qty numeric not null,
   unit text
 );
-
 
 -- ============================================================
 -- 0008: the stock-movement log (activity) and POS sales
@@ -340,7 +333,6 @@ create table public.sale_items (
   line_total numeric not null
 );
 
-
 -- ============================================================
 -- 0009: Operating Expenses, Staff Directory, LPG Usage
 -- ============================================================
@@ -381,7 +373,6 @@ create table public.lpg_logs (
   price numeric
 );
 
-
 -- ============================================================
 -- 0010: Settings (singleton row) and document-number sequences
 -- ============================================================
@@ -421,7 +412,6 @@ begin
   return day_key || '-' || lpad(next_seq::text, 4, '0');
 end;
 $$;
-
 
 -- ============================================================
 -- 0011: server-side movement logic — mirrors reverseMovementStock(),
@@ -634,7 +624,6 @@ begin
 end;
 $$;
 
-
 -- ============================================================
 -- 0012: Row Level Security
 --
@@ -789,7 +778,6 @@ create policy sales_insert on public.sales for insert with check ((select auth.u
 create policy sale_items_select on public.sale_items for select using ((select auth.uid()) is not null);
 create policy sale_items_insert on public.sale_items for insert with check ((select auth.uid()) is not null);
 
-
 -- ============================================================
 -- 0013: indexes for the queries the app actually runs
 -- (date-range filters on activity/sales, and every one-to-many join)
@@ -817,7 +805,6 @@ create index idx_cos_foods_plan_id on public.cos_foods (plan_id);
 create index idx_cos_food_lines_food_id on public.cos_food_lines (food_id);
 
 create index idx_staff_work_dates_staff_id on public.staff_work_dates (staff_id);
-
 
 -- ============================================================
 -- 0014: username -> email lookup for sign-in (the app signs in by
@@ -908,7 +895,6 @@ $$;
 grant execute on function public.email_for_username(text) to anon, authenticated;
 grant execute on function public.username_available(text) to anon, authenticated;
 grant execute on function public.accounts_exist() to anon, authenticated;
-
 
 -- ============================================================
 -- 0015: Supabase Storage bucket for product photos / the GCash QR
@@ -1009,7 +995,6 @@ $$;
 
 grant execute on function public.complete_purchase(bigint, text, text, jsonb) to authenticated;
 
-
 -- ============================================================
 -- 0016: a Menu Plan ingredient line's cost can be auto-calculated
 -- (qty x unit price) or typed directly ("manual"), so — like the app's
@@ -1017,7 +1002,6 @@ grant execute on function public.complete_purchase(bigint, text, text, jsonb) to
 -- ============================================================
 
 alter table public.cos_food_lines add column total_cost numeric;
-
 
 -- ============================================================
 -- 0017: complete_production() — cooking a recipe touches every
@@ -1109,7 +1093,6 @@ $$;
 
 grant execute on function public.complete_production(bigint, numeric, text, jsonb, bigint, numeric) to authenticated;
 
-
 -- ============================================================
 -- 0018: complete_sale() — checkout touches every cart line's item
 -- stock, the activity rows, and the sales + sale_items record all at
@@ -1196,7 +1179,6 @@ $$;
 
 grant execute on function public.complete_sale(jsonb, numeric, text, numeric, numeric) to authenticated;
 
-
 -- ============================================================
 -- 0019: purge_old_activity() gets its own auth check (it had none —
 -- everything else in 0011 self-gates via is_admin(), but a scheduled/
@@ -1270,7 +1252,6 @@ grant execute on function public.complete_sale(jsonb, numeric, text, numeric, nu
 revoke execute on function public.purge_old_activity() from public;
 grant execute on function public.purge_old_activity() to authenticated;
 
-
 -- ============================================================
 -- 0020: bulk void/delete for a date range of activity records —
 -- used by both "Void Records in Range" (Sales History page) and
@@ -1340,4 +1321,12 @@ $$;
 grant execute on function public.void_activity_range(bigint[], text, text) to authenticated;
 grant execute on function public.delete_activity_range(bigint[]) to authenticated;
 
+-- ============================================================
+-- 0021: add "tools" as a valid items.category (non-food supplies —
+-- paper rolls, cutters, gloves, etc. Not sellable, not an ingredient.)
+-- ============================================================
+
+alter table public.items drop constraint items_category_check;
+alter table public.items add constraint items_category_check
+  check (category in ('snack', 'drink', 'food', 'ingredient', 'tools'));
 

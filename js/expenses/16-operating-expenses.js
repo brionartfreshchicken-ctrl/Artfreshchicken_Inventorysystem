@@ -151,7 +151,7 @@ document.getElementById('tbl-expenses').addEventListener('click', e=>{
 });
 
 function rowActions(i){
-  const sizeBtn = i.category==='ingredient' ? '' :
+  const sizeBtn = (i.category==='ingredient' || i.category==='tools') ? '' :
     `<button class="btn small ghost" data-act="size" data-id="${i.id}" title="Add another size of ${escapeHtml(i.name)}">⧉ Add Size</button>`;
   return `<div class="row-actions">
     <button class="btn small" data-act="in" data-id="${i.id}" title="Add stock for ${escapeHtml(i.name)}">+ Stock In</button>

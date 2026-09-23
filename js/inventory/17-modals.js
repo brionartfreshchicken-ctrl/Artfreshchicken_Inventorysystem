@@ -11,6 +11,7 @@ const UNIT_CHOICES = {
   snack:      ['pcs','pack','box'],
   drink:      ['pcs','bottle','can','glass','cup','L'],
   food:       ['serving','plate','bowl'],
+  tools:      ['pcs','roll','pack','box','set','pair'],
 };
 function unitOptions(cat, current){
   const list = UNIT_CHOICES[cat] || UNIT_CHOICES.snack;
@@ -114,7 +115,9 @@ function openItemModal(mode, presetCategory, item){
   const isEdit = mode==='edit';
   const cat = item ? item.category : presetCategory;
   const showCatSelect = presetCategory==='any';
-  const isIngredient = cat==='ingredient';
+  // Ingredients and Tools are both stock you never sell directly — same
+  // form treatment (no Size variants, no Selling Price).
+  const isIngredient = cat==='ingredient' || cat==='tools';
 
   const body = `
     ${showCatSelect ? `
@@ -125,6 +128,7 @@ function openItemModal(mode, presetCategory, item){
         <option value="drink" ${cat==='drink'?'selected':''}>Drink</option>
         <option value="food" ${cat==='food'?'selected':''}>Food</option>
         <option value="ingredient" ${cat==='ingredient'?'selected':''}>Ingredient</option>
+        <option value="tools" ${cat==='tools'?'selected':''}>Tools</option>
       </select>
     </div>` : ''}
     <div class="field-row">
@@ -219,7 +223,7 @@ function openItemModal(mode, presetCategory, item){
   if(showCatSelect){
     document.getElementById('f-cat').addEventListener('change', e=>{
       const v = e.target.value;
-      const ing = v==='ingredient';
+      const ing = v==='ingredient' || v==='tools';
       document.getElementById('wrap-selling').style.display = ing ? 'none' : '';
       document.getElementById('wrap-size').style.display    = ing ? 'none' : '';
       document.getElementById('size-hint').style.display    = ing ? 'none' : '';
@@ -330,7 +334,7 @@ function openItemModal(mode, presetCategory, item){
     const finalCat = showCatSelect ? document.getElementById('f-cat').value : cat;
     const name = document.getElementById('f-name').value.trim();
     const sizeEl = document.getElementById('f-size');
-    const size = (finalCat==='ingredient' || !sizeEl) ? '' : sizeEl.value.trim();
+    const size = (finalCat==='ingredient' || finalCat==='tools' || !sizeEl) ? '' : sizeEl.value.trim();
     const stock = parseFloat(document.getElementById('f-stock').value);
     const unitSel = document.getElementById('f-unit').value;
     const unit = (unitSel === '__other'
@@ -338,7 +342,7 @@ function openItemModal(mode, presetCategory, item){
       : unitSel) || 'pcs';
     const cost = parseFloat(document.getElementById('f-cost').value);
     const sellingRaw = document.getElementById('f-selling') ? document.getElementById('f-selling').value : '';
-    const selling = finalCat==='ingredient' ? null : (sellingRaw===''?null:parseFloat(sellingRaw));
+    const selling = (finalCat==='ingredient' || finalCat==='tools') ? null : (sellingRaw===''?null:parseFloat(sellingRaw));
     const threshold = parseFloat(document.getElementById('f-threshold').value) || 0;
     const sku = document.getElementById('f-sku').value.trim();
     const supplierRaw = document.getElementById('f-supplier').value;

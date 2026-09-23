@@ -6,7 +6,7 @@
 
 let cart = [];   // [{itemId, qty}] — cleared once the sale is completed
 
-const sellable = i => i.category !== 'ingredient' && i.selling != null;
+const sellable = i => i.category !== 'ingredient' && i.category !== 'tools' && i.selling != null;
 
 const POS_CAT_ORDER = ['food','snack','drink'];
 const POS_CAT_LABEL = {food:'🍽 Food Serve', snack:'🍿 Snacks', drink:'🥤 Drinks'};
