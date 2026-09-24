@@ -218,7 +218,14 @@ a{color:var(--teal);text-decoration:none;}
 .btn.outline-teal{background:var(--panel);border-color:var(--teal);color:var(--teal);}
 .btn.outline-teal:hover{background:var(--teal-tint);}
 .btn.small{font-size:12px;padding:6px 11px;border-radius:8px;}
-.row-actions{display:flex;flex-wrap:wrap;gap:6px;max-width:260px;}
+/* A fixed 2-column grid instead of flex-wrap — flex-wrap let the table
+   squeeze this column down to one button's width before ever scrolling
+   the table sideways, so 5 actions rendered as 5 full-height stacked
+   rows per product (very tall rows, no visual grouping). Grid forces
+   two side by side regardless of available width, at most half as
+   tall; the table's existing overflow-x:auto handles it if that's
+   still too narrow, same as any other wide column. */
+.row-actions{display:grid;grid-template-columns:repeat(2,auto);gap:6px 8px;align-items:center;}
 .row-actions .btn{white-space:nowrap;}
 .btn:disabled{opacity:.45;cursor:not-allowed;}
 .btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
