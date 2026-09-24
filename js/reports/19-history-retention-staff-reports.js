@@ -1597,6 +1597,12 @@ async function downloadEverything(){
       'Cost/unit':i.cost, 'Selling/unit':i.selling ?? '',
       'Profit/unit': i.selling!=null ? round2(i.selling-i.cost) : '',
       'Total Cost': round2(i.cost*i.stock), 'Min Stock': i.threshold, 'Max Stock': i.maxStock ?? '',
+      // Same "1 box ≈ 20 pcs" estimate shown on the Products list — carried
+      // into the backup so a box/pack/bundle count still means something
+      // once it's out of the app and into a spreadsheet.
+      'Conversion Unit': i.conv ? i.conv.unit : '',
+      'Pieces per 1 Unit': i.conv ? i.conv.qty : '',
+      'Est. Pieces Left': (i.conv && i.conv.qty>0) ? round2(i.stock*i.conv.qty) : '',
       Supplier: sup ? sup.name : '', Status: statusLabel(getStatus(i))
     };
   });
