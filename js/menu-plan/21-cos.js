@@ -577,13 +577,28 @@ document.getElementById('cos-foods').addEventListener(ev, e=>{
     if(field === 'qtyNum' || field === 'qtyUnit') syncQtyText(line);
     if(field === 'priceNum' || field === 'priceMode') syncUnitText(line);
 
-    /* Changing the measure changes what "per ___" means, so relabel it */
+    /* Changing the measure changes what "per ___" means, so relabel it —
+       and, for a line tied to a real Inventory item, re-derive the price
+       itself. Otherwise switching "Sugar" from kg to g would leave the
+       price at ₱90 (its per-kg cost) instead of the ₱0.09 that's
+       actually true per gram — same number, silently wrong unit. */
     if(field === 'qtyUnit'){
       syncUnitText(line);
       const modeSel = document.querySelector(`[data-cl="priceMode"][data-fid="${f.id}"][data-id="${line.id}"]`);
       if(modeSel){
         modeSel.options[0].textContent = 'per ' + (line.qtyUnit || 'pcs');
         modeSel.title = `Is that the price for one ${line.qtyUnit||'pcs'}, or for all of it?`;
+      }
+      const known = state.items.find(i =>
+        i.category === 'ingredient' && i.name.toLowerCase() === String(line.name||'').trim().toLowerCase());
+      if(known && !priceIsTotal(line)){
+        const factor = convertQty(1, line.qtyUnit, known.unit);
+        if(factor !== null){
+          line.priceNum = Math.round(known.cost * factor * 10000) / 10000;
+          syncUnitText(line);
+          const priceBox = document.querySelector(`[data-cl="priceNum"][data-fid="${f.id}"][data-id="${line.id}"]`);
+          if(priceBox) priceBox.value = line.priceNum;
+        }
       }
     }
 
