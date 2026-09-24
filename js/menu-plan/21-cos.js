@@ -99,7 +99,7 @@ function planTotals(plan){
 
 /* ---------- Auto-costing a line ---------- */
 
-const QTY_UNITS = ['pcs','kg','g','L','ml','pack','bottle','can','sachet','bulb','tray','cup','tbsp','tsp'];
+const QTY_UNITS = ['pcs','kg','g','L','ml','pack','bottle','can','sachet','bulb','box','bundle','tray','cup','tbsp','tsp'];
 
 /* Quick-pick presets for a quantity field — values are text, in exactly
    the format parseQtyInput() (04-format.js) already accepts, so picking

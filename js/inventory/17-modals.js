@@ -7,7 +7,7 @@
 /* Sensible units per category. "Other…" reveals a free-text box so nothing
    is locked out — a bulb of garlic or a sachet still works. */
 const UNIT_CHOICES = {
-  ingredient: ['kg','g','L','ml','pcs','pack','bottle','sachet','bulb'],
+  ingredient: ['kg','g','L','ml','pcs','pack','bottle','sachet','bulb','box','bundle'],
   snack:      ['pcs','pack','box'],
   drink:      ['pcs','bottle','can','glass','cup','L'],
   food:       ['serving','plate','bowl'],
