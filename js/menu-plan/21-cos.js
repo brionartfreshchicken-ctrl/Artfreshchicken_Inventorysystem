@@ -141,6 +141,24 @@ function convertQty(qty, fromUnit, toUnit){
   return qty * from.perBase / to.perBase;
 }
 
+/* convertQty() refuses anything count-type (pack, bottle, can, sachet,
+   bulb, tray) since there's no universal ratio for those — a "pack" isn't
+   the same size everywhere. This adds ONE more thing to try before giving
+   up: the item's own "Estimated Conversion" (Add/Edit Product's "1 [unit]
+   ≈ N [conv.unit]" field, e.g. "1 pack ≈ 20 pcs"), which someone who
+   actually stocks the item typed in themselves. Only used going FROM that
+   conv.unit back to the item's real stocking unit — deduction always
+   needs a quantity in whatever unit the item is stocked in. */
+function convertQtyForItem(qty, fromUnit, item){
+  if(fromUnit === item.unit) return qty;
+  const builtIn = convertQty(qty, fromUnit, item.unit);
+  if(builtIn !== null) return builtIn;
+  if(item.conv && item.conv.unit === fromUnit && item.conv.qty > 0){
+    return qty / item.conv.qty;      // e.g. 5 pcs ÷ (20 pcs per pack) = 0.25 pack
+  }
+  return null;
+}
+
 /* A price can mean two things and both are normal:
      'unit'  — ₱460 per kilo, so 2 kg costs ₱920
      'total' — ₱460 for the whole 2 kg
@@ -574,6 +592,7 @@ document.getElementById('cos-foods').addEventListener(ev, e=>{
   if(f.saved) markUnsaved(f);
   const line = (f.lines||[]).find(l => l.id === Number(cl.dataset.id)); if(!line) return;
   const field = cl.dataset.cl;
+  const previousName = line.name;   // captured before it's overwritten below — see the 'name' branch
 
   if(field === 'total'){
     // Typing a total means you know better than the multiplication
@@ -602,7 +621,7 @@ document.getElementById('cos-foods').addEventListener(ev, e=>{
       const known = state.items.find(i =>
         i.category === 'ingredient' && i.name.toLowerCase() === String(line.name||'').trim().toLowerCase());
       if(known && !priceIsTotal(line)){
-        const factor = convertQty(1, line.qtyUnit, known.unit);
+        const factor = convertQtyForItem(1, line.qtyUnit, known);
         if(factor !== null){
           line.priceNum = Math.round(known.cost * factor * 10000) / 10000;
           syncUnitText(line);
@@ -612,8 +631,17 @@ document.getElementById('cos-foods').addEventListener(ev, e=>{
       }
     }
 
-    // Picking a tracked ingredient brings its price and its unit across
-    if(field === 'name'){
+    // Picking a tracked ingredient brings its price and its unit across —
+    // but only the FIRST time it's picked. A plain <select> only ever
+    // fired 'change' once per deliberate pick, but this is now a free-text
+    // field with both 'input' and 'change' bound, and browsers can refire
+    // 'change' on blur even when the value didn't actually change (e.g.
+    // clicking straight from this field into the unit dropdown). Without
+    // this guard, that redundant refire would silently stomp a qtyUnit
+    // you'd *just* changed (e.g. to "pcs" for a pack→pcs conversion) back
+    // to the ingredient's own stocked unit — a real, reproduced bug.
+    const nameChanged = String(previousName||'').trim().toLowerCase() !== cl.value.trim().toLowerCase();
+    if(field === 'name' && nameChanged){
       const known = state.items.find(i =>
         i.category === 'ingredient' && i.name.toLowerCase() === cl.value.trim().toLowerCase());
       if(known){
@@ -1236,7 +1264,7 @@ function planDeduction(food){
     const plannedUnit = l.qtyUnit || '';
     let deductQty = qty;
     if(plannedUnit !== item.unit){
-      const converted = convertQty(qty, plannedUnit, item.unit);
+      const converted = convertQtyForItem(qty, plannedUnit, item);
       if(converted === null){
         mismatch.push({name, planned:plannedUnit||'—', stocked:item.unit});
         return;
