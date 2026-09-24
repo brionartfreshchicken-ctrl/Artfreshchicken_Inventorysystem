@@ -160,6 +160,15 @@ function lineFormulaCaption(l){
   return `${q} ${l.qtyUnit||''} × ${peso(p)} = ${peso(l.total||0)}`;
 }
 
+/* Old data, or the matching product was renamed/deleted — the name stays
+   exactly as typed (nothing silently disappears), just flagged so it's
+   clear stock won't be deducted for it. */
+function ingredientNameHint(name){
+  if(!name) return '';
+  const known = state.items.some(i=>i.category==='ingredient' && i.name.toLowerCase()===String(name).trim().toLowerCase());
+  return known ? '' : "Not a Products item — won't deduct";
+}
+
 function syncUnitText(line){
   const n = (line.priceNum === '' || line.priceNum == null) ? '' : line.priceNum;
   if(n === ''){ line.unit = ''; return; }
@@ -351,7 +360,17 @@ function renderCos(){
   document.getElementById('cos-title').textContent =
     `${planDate(plan)} · ${(plan.foods||[]).length} food${(plan.foods||[]).length===1?'':'s'}`;
 
-  document.getElementById('cos-foods').innerHTML = cosFoods().map((f, idx)=>{
+  // One shared datalist for every ingredient-name input on the page —
+  // referenced by id (list="cos-ingredient-list"), not nested inside each
+  // row, so it only needs building once per render regardless of how many
+  // foods/lines exist. The visible suggestion shows the unit; picking one
+  // (or typing an exact match) fills in just the name.
+  const ingredientDatalist = `<datalist id="cos-ingredient-list">${
+    state.items.filter(i=>i.category==='ingredient')
+      .map(i=>`<option value="${escapeHtml(i.name)}">${escapeHtml(i.name)} (${escapeHtml(i.unit)})</option>`).join('')
+  }</datalist>`;
+
+  document.getElementById('cos-foods').innerHTML = ingredientDatalist + cosFoods().map((f, idx)=>{
     const t = foodTotals(f);
     return `
     <div class="card cos-food ${f.collapsed?'collapsed':''}" data-food="${f.id}">
@@ -396,20 +415,11 @@ function renderCos(){
           ${(f.lines||[]).length ? f.lines.map((l,i)=>`
           <tr>
             <td class="muted">${i+1}</td>
-            <td><select class="cos-line-unit" data-cl="name" data-fid="${f.id}" data-id="${l.id}" style="width:100%;">
-              ${(()=>{
-                const ingredientItems = state.items.filter(i=>i.category==='ingredient');
-                const nameMatches = ingredientItems.some(i=>i.name.toLowerCase()===String(l.name||'').trim().toLowerCase());
-                let opts = '<option value="">— Select an ingredient —</option>';
-                if(l.name && !nameMatches){
-                  // Old data, or the matching product was renamed/deleted — keep it
-                  // selectable so nothing silently disappears, but flag it clearly.
-                  opts += `<option value="${escapeHtml(l.name)}" selected>${escapeHtml(l.name)} (not a Products item — won't deduct)</option>`;
-                }
-                opts += ingredientItems.map(i=>`<option value="${escapeHtml(i.name)}" ${i.name.toLowerCase()===String(l.name||'').trim().toLowerCase()?'selected':''}>${escapeHtml(i.name)} (${escapeHtml(i.unit)})</option>`).join('');
-                return opts;
-              })()}
-            </select></td>
+            <td>
+              <input class="cos-line-unit" list="cos-ingredient-list" data-cl="name" data-fid="${f.id}" data-id="${l.id}"
+                     type="text" autocomplete="off" placeholder="Type to search…" value="${escapeHtml(l.name||'')}" style="width:100%;cursor:text;"/>
+              <div class="hint" data-cl-namehint="${l.id}" style="font-size:10.5px;color:var(--yellow);margin-top:3px;">${escapeHtml(ingredientNameHint(l.name))}</div>
+            </td>
             <td><div class="qty-cell">
               <input class="cos-line-input num" data-cl="qtyNum" data-fid="${f.id}" data-id="${l.id}"
                      type="text" inputmode="decimal" value="${l.qtyNum ?? ''}" placeholder="0, 1/2, 1 1/2…"
@@ -622,6 +632,8 @@ document.getElementById('cos-foods').addEventListener(ev, e=>{
           if(sel) sel.value = known.unit;
         }
       }
+      const nameHint = document.querySelector(`[data-cl-namehint="${line.id}"]`);
+      if(nameHint) nameHint.textContent = ingredientNameHint(line.name);
     }
     // Quantity or price changed, so recost the row
     const auto = applyAutoCost(line);
