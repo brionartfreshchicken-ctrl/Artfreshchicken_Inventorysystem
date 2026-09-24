@@ -701,47 +701,51 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
       toast(note);
     };
 
-    // Already taken once — don't take it twice
-    if(f.deductedAt){
-      return finish(`${f.name || 'Food'} saved — stock was already taken`);
+    // Compares what's required now against what was already taken last
+    // time (if ever) — see planDeductionDelta for why this isn't a
+    // one-shot "already deducted, skip" gate any more.
+    const result = planDeductionDelta(f);
+
+    if(!result.delta.length && !result.missing.length && !result.mismatch.length){
+      return finish(result.hadPrior ? `${f.name || 'Food'} saved — no stock change` : `${f.name || 'Food'} saved`);
     }
 
-    const plan = planDeduction(f);
-
-    if(!plan.take.length && !plan.missing.length && !plan.mismatch.length){
-      return finish(`${f.name || 'Food'} saved`);
-    }
-
-    const rows = plan.take.map(t=>{
-      const after = Math.round((t.item.stock - Math.min(t.qty, t.item.stock))*1000)/1000;
-      const converted = t.plannedUnit !== t.unit;
-      const usedCell = converted
-        ? `${round2(t.plannedQty)} ${escapeHtml(t.plannedUnit)} <span class="muted">(${round2(t.qty)} ${escapeHtml(t.unit)})</span>`
-        : `${round2(t.qty)} ${escapeHtml(t.unit)}`;
-      return `<tr><td>${escapeHtml(t.name)}</td>
-        <td class="num">${usedCell}</td>
-        <td class="num muted">${t.item.stock} → ${after}</td></tr>`;
+    const rows = result.delta.map(d=>{
+      const giving = d.change < 0;
+      const moved = Math.abs(d.change);
+      const after = giving
+        ? Math.round((d.item.stock + moved) * 1000) / 1000
+        : Math.round((d.item.stock - Math.min(moved, d.item.stock)) * 1000) / 1000;
+      const converted = d.plannedUnit != null && d.plannedUnit !== d.unit;
+      const movedCell = giving
+        ? `+${round2(moved)} ${escapeHtml(d.unit)} <span class="muted">(returned)</span>`
+        : converted
+          ? `${round2(d.plannedQty)} ${escapeHtml(d.plannedUnit)} <span class="muted">(${round2(moved)} ${escapeHtml(d.unit)})</span>`
+          : `${round2(moved)} ${escapeHtml(d.unit)}`;
+      return `<tr><td>${escapeHtml(d.name)}</td>
+        <td class="num">${movedCell}</td>
+        <td class="num muted">${d.item.stock} → ${after}</td></tr>`;
     }).join('');
 
-    confirmAction('Take ingredients from stock',
+    confirmAction(result.hadPrior ? 'Update stock for this change' : 'Take ingredients from stock',
       `<div class="hint">Saving <strong style="color:var(--text)">${escapeHtml(f.name||'this food')}</strong>
-         removes these from your Ingredients inventory:</div>
+         ${result.hadPrior ? "changes these in" : "removes these from"} your Ingredients inventory:</div>
        ${rows ? `<table style="margin-top:12px;"><thead><tr>
-         <th>Ingredient</th><th class="num">Used</th><th class="num">Stock</th>
+         <th>Ingredient</th><th class="num">${result.hadPrior ? 'Change' : 'Used'}</th><th class="num">Stock</th>
        </tr></thead><tbody>${rows}</tbody></table>` : ''}
-       ${plan.short.length ? `<div class="hint" style="margin-top:12px;color:var(--red);">
-         Not enough of ${plan.short.map(x=>escapeHtml(x.name)).join(', ')} — stock goes to zero
+       ${result.short.length ? `<div class="hint" style="margin-top:12px;color:var(--red);">
+         Not enough of ${result.short.map(x=>escapeHtml(x.name)).join(', ')} — stock goes to zero
          rather than negative.</div>` : ''}
-       ${plan.missing.length ? `<div class="hint" style="margin-top:12px;color:var(--yellow);">
+       ${result.missing.length ? `<div class="hint" style="margin-top:12px;color:var(--yellow);">
          Not in your Ingredients list, so nothing is deducted for:
-         ${plan.missing.map(escapeHtml).join(', ')}.</div>` : ''}
-       ${plan.mismatch.length ? `<div class="hint" style="margin-top:12px;color:var(--yellow);">
-         Unit mismatch, skipped: ${plan.mismatch.map(m=>
+         ${result.missing.map(escapeHtml).join(', ')}.</div>` : ''}
+       ${result.mismatch.length ? `<div class="hint" style="margin-top:12px;color:var(--yellow);">
+         Unit mismatch, skipped: ${result.mismatch.map(m=>
            `${escapeHtml(m.name)} planned in ${escapeHtml(m.planned)} but stocked in ${escapeHtml(m.stocked)}`
          ).join('; ')}.</div>` : ''}`,
-      'Save and take stock', ()=>{
-        applyDeduction(f, plan);
-        finish(`${f.name || 'Food'} saved — ${plan.take.length} ingredient${plan.take.length===1?'':'s'} taken from stock`);
+      result.hadPrior ? 'Save and update stock' : 'Save and take stock', ()=>{
+        applyDeductionDelta(f, result);
+        finish(`${f.name || 'Food'} saved — stock updated`);
       }, false);
     return;
   }
@@ -1248,21 +1252,69 @@ function planDeduction(food){
   return {take, missing, mismatch, short};
 }
 
-function applyDeduction(food, plan){
-  plan.take.forEach(({item, qty})=>{
-    const used = Math.min(qty, item.stock);       // never drive stock negative
-    item.stock = Math.round((item.stock - used) * 1000) / 1000;
-    // Menu Plan isn't fully migrated to Supabase yet (a later phase), but
-    // leaving this stock change unpersisted would silently revert on the
-    // next reload — fire-and-forget it now rather than restructure every
-    // caller in this file into async just for that.
-    dbUpdateItemStock(item.id, item.stock).catch(err =>
-      toast('Could not save that stock change: ' + err.message, true));
-    logActivity(item, 'out', used, 'used').catch(err =>
-      toast('Could not save that movement: ' + err.message, true));
+/* Saving a food used to deduct stock exactly once (gated on
+   food.deductedAt) — meant to stop a re-save from taking the same
+   ingredients twice, but it also meant editing an ALREADY-saved food
+   (adding an ingredient, bumping a quantity) silently deducted nothing
+   at all for that change, because the whole food was already flagged
+   "taken". This compares what's required NOW against food.deducted
+   (the snapshot of what was actually taken last time) and returns just
+   the difference — a newly added or increased ingredient still comes
+   out of stock, a removed or reduced one gets the difference back,
+   and an unchanged one is left alone. First-ever save behaves exactly
+   as before, since food.deducted starts empty. */
+function planDeductionDelta(food){
+  const current = planDeduction(food);
+  const already = {};
+  (food.deducted||[]).forEach(d => { already[d.name] = (already[d.name]||0) + (Number(d.qty)||0); });
+
+  const delta = [], short = [];
+  const seen = new Set();
+  current.take.forEach(t=>{
+    seen.add(t.name);
+    const before = already[t.name] || 0;
+    const change = Math.round((t.qty - before) * 1000) / 1000;
+    if(change === 0) return;
+    if(change > 0 && change > t.item.stock) short.push({name:t.name, need:change, have:t.item.stock, unit:t.unit});
+    delta.push({item:t.item, name:t.name, unit:t.unit, change, plannedQty:t.plannedQty, plannedUnit:t.plannedUnit});
+  });
+  // Ingredients that were deducted before but no longer appear on this
+  // food at all (line deleted) — give back everything taken for them.
+  Object.keys(already).forEach(name=>{
+    if(seen.has(name) || !already[name]) return;
+    const item = ingredientByName(name);
+    if(!item) return;   // no longer a real Ingredients item — nothing to give back to
+    delta.push({item, name, unit:item.unit, change:-already[name]});
+  });
+
+  return {take:current.take, missing:current.missing, mismatch:current.mismatch, short, delta,
+    hadPrior: (food.deducted||[]).length > 0};
+}
+
+function applyDeductionDelta(food, result){
+  result.delta.forEach(({item, change})=>{
+    if(change > 0){
+      const used = Math.min(change, item.stock);    // never drive stock negative
+      item.stock = Math.round((item.stock - used) * 1000) / 1000;
+      // Menu Plan isn't fully migrated to Supabase yet (a later phase), but
+      // leaving this stock change unpersisted would silently revert on the
+      // next reload — fire-and-forget it now rather than restructure every
+      // caller in this file into async just for that.
+      dbUpdateItemStock(item.id, item.stock).catch(err =>
+        toast('Could not save that stock change: ' + err.message, true));
+      logActivity(item, 'out', used, 'used').catch(err =>
+        toast('Could not save that movement: ' + err.message, true));
+    }else{
+      const given = -change;
+      item.stock = Math.round((item.stock + given) * 1000) / 1000;
+      dbUpdateItemStock(item.id, item.stock).catch(err =>
+        toast('Could not save that stock change: ' + err.message, true));
+      logActivity(item, 'in', given, 'correct_in').catch(err =>
+        toast('Could not save that movement: ' + err.message, true));
+    }
   });
   food.deductedAt = Date.now();
-  food.deducted   = plan.take.map(t => ({name:t.name, qty:t.qty, unit:t.unit}));
+  food.deducted   = result.take.map(t => ({name:t.name, qty:t.qty, unit:t.unit}));
 }
 
 /* Puts back exactly what a food took, used when it is removed. */
