@@ -219,8 +219,13 @@ function renderInventory(){
       const sup = (state.suppliers||[]).find(x=>x.id===i.supplierId);
       if(sup) meta.push(escapeHtml(sup.name));
     }
-    if(i.conv && i.conv.qty>0) meta.push(`≈ ${round2(i.stock*i.conv.qty)} ${escapeHtml(i.conv.unit)} (est.)`);
     const metaLine = meta.length ? `<div class="muted" style="font-size:11px;margin-top:2px;">${meta.join(' · ')}</div>` : '';
+    // Right under the box/pack/bundle count itself, not buried with SKU/
+    // supplier above — this is what "how many pcs is that really" answers,
+    // so it belongs next to the number it's explaining. Recomputed from
+    // i.stock every render, so it stays correct after any deduction.
+    const convLine = (i.conv && i.conv.qty>0)
+      ? `<div class="muted" style="font-size:11px;">≈ ${round2(i.stock*i.conv.qty)} ${escapeHtml(i.conv.unit)} left</div>` : '';
     const thumb = i.image
       ? `<img src="${i.image}" style="width:28px;height:28px;border-radius:6px;object-fit:cover;vertical-align:middle;margin-right:8px;"/>`
       : '';
@@ -228,7 +233,7 @@ function renderInventory(){
       <td>${thumb}${escapeHtml(i.name)}${metaLine}</td>
       <td>${sizeCell(i)}</td>
       <td><span class="cat-tag">${catLabel(i.category)}</span></td>
-      <td>${i.stock} <span class="muted">${escapeHtml(i.unit)}</span></td>
+      <td>${i.stock} <span class="muted">${escapeHtml(i.unit)}</span>${convLine}</td>
       <td>${peso(i.cost)}</td>
       ${sellCols ? `<td>${peso(i.selling)}</td><td>${peso(tubo(i))}</td>` : ``}
       <td class="strong">${peso(totalPuhunan(i))}</td>
