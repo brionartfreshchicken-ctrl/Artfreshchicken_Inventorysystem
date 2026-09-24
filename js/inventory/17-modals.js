@@ -8,8 +8,8 @@
    is locked out — a bulb of garlic or a sachet still works. */
 const UNIT_CHOICES = {
   ingredient: ['kg','g','L','ml','pcs','pack','bottle','sachet','bulb','box','bundle'],
-  snack:      ['pcs','pack','box'],
-  drink:      ['pcs','bottle','can','glass','cup','L'],
+  snack:      ['pcs','pack','box','bundle'],
+  drink:      ['pcs','bottle','can','glass','cup','L','pack','box','bundle'],
   food:       ['serving','plate','bowl'],
   tools:      ['pcs','roll','pack','box','set','pair'],
 };
