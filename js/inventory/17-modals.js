@@ -439,8 +439,9 @@ function openItemModal(mode, presetCategory, item){
 
 /* ---------- Quantity (stock in/out) modal ---------- */
 
-function openQtyModal(item, direction, allowPickItem, categoryForPick){
+function openQtyModal(item, direction, allowPickItem, categoryForPick, defaultReason){
   const dirLabel = direction==='in' ? 'Stock In' : 'Stock Out';
+  const sel = v => v===defaultReason ? 'selected' : '';
   const body = `
     ${allowPickItem ? `
     <div class="field">
@@ -457,14 +458,14 @@ function openQtyModal(item, direction, allowPickItem, categoryForPick){
       <label>Reason</label>
       <select id="f-reason">
         ${direction==='in' ? `
-          <option value="purchase">Purchase / delivery — expense</option>
-          <option value="produced">Cooked / produced</option>
-          <option value="correct_in">Stock correction</option>
+          <option value="purchase" ${sel('purchase')}>Purchase / delivery — expense</option>
+          <option value="produced" ${sel('produced')}>Cooked / produced</option>
+          <option value="correct_in" ${sel('correct_in')}>Stock correction</option>
         ` : `
-          <option value="sold">Sold — revenue</option>
-          <option value="used">Used in cooking</option>
-          <option value="waste">Spoiled / waste</option>
-          <option value="correct_out">Stock correction</option>
+          <option value="sold" ${sel('sold')}>Sold — revenue</option>
+          <option value="used" ${sel('used')}>Used in cooking</option>
+          <option value="waste" ${sel('waste')}>Spoiled / waste</option>
+          <option value="correct_out" ${sel('correct_out')}>Stock correction</option>
         `}
       </select>
     </div>

@@ -32,17 +32,26 @@ function renderPOS(){
     const left = i.stock - (inCart ? inCart.qty : 0);
     const status = getStatus(i);
     const thumb = i.image ? `<img class="pt-photo" src="${i.image}"/>` : '';
-    return `<button class="pos-tile ${status==='low'?'low':''}" data-sell="${i.id}" ${left<=0?'disabled':''}>
+    // A <button> can't contain another <button> (invalid HTML, and the
+    // click would just bubble to the outer one anyway), so the tile
+    // itself is a div acting as the "tap to add" button — same click
+    // delegation as before, just keyed off data-sell instead of a real
+    // <button> tag — with the waste shortcut as its own real button
+    // inside, stopping propagation so it doesn't also add to cart.
+    return `<div class="pos-tile ${status==='low'?'low':''}" data-sell="${i.id}" role="button" tabindex="0" ${left<=0?'aria-disabled="true"':''}>
       ${thumb}
       <div class="pt-info">
         <div class="pt-name">${escapeHtml(i.name)}</div>
         <div class="pt-size">${sizeOf(i) ? escapeHtml(sizeOf(i)) : '&nbsp;'}</div>
       </div>
       <div class="pt-right">
-        <div class="pt-price">${peso(i.selling)}</div>
+        <div class="pt-price-row">
+          <div class="pt-price">${peso(i.selling)}</div>
+          <button class="pt-waste-btn" data-waste="${i.id}" title="Mark spoiled/wasted — removes stock and logs it as waste">🗑</button>
+        </div>
         <div class="pt-stock">${left<=0 ? 'none left' : `${Math.round(left*100)/100} ${escapeHtml(i.unit)} left`}</div>
       </div>
-    </button>`;
+    </div>`;
   };
 
   // Grouped by category (Food Serve / Snacks / Drinks), each its own
@@ -280,6 +289,16 @@ document.getElementById('pos-paymethod').addEventListener('change', updatePosTot
 /* Tile clicks add to the cart */
 
 document.getElementById('posGrid').addEventListener('click', e=>{
+  // Checked first since the waste button sits inside a tile that ALSO
+  // has data-sell — without this, e.target.closest('[data-sell]') below
+  // would still match the enclosing tile and add it to the cart too.
+  const wasteBtn = e.target.closest('[data-waste]');
+  if(wasteBtn){
+    const item = byId(Number(wasteBtn.dataset.waste));
+    if(item) openQtyModal(item, 'out', false, null, 'waste');
+    return;
+  }
+
   const btn = e.target.closest('[data-sell]');
   if(!btn) return;
   const item = byId(Number(btn.dataset.sell));
