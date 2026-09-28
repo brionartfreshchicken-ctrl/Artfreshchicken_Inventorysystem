@@ -182,10 +182,11 @@ function renderReports(){
   const wasteMap = {};
   wasted.forEach(a=>{
     const k = a.itemId ?? a.name;
-    wasteMap[k] ||= {name:a.name, qty:0, val:0, unit:a.unit, last:0};
+    wasteMap[k] ||= {name:a.name, qty:0, val:0, unit:a.unit, last:0, ids:[]};
     wasteMap[k].qty += a.qty;
     wasteMap[k].val += lineValue(a);
     wasteMap[k].last = Math.max(wasteMap[k].last, a.ts);
+    wasteMap[k].ids.push(a.id);
   });
   const wasteRows = Object.values(wasteMap).sort((a,b)=>b.val-a.val);
   document.getElementById('tbl-waste').innerHTML = wasteRows.length
@@ -194,11 +195,12 @@ function renderReports(){
         <td>${Math.round(w.qty*100)/100} <span class="muted">${escapeHtml(w.unit||'')}</span></td>
         <td class="strong" style="color:var(--red)">${peso(w.val)}</td>
         <td class="muted">${timeAgo(w.last)}</td>
+        <td class="num">${isAdmin() ? `<button class="btn small danger" data-del-waste="${w.ids.join(',')}" data-waste-name="${escapeHtml(w.name)}" title="Delete these waste records">× Delete</button>` : ''}</td>
       </tr>`).join('')
-    : `<tr class="empty-row"><td colspan="4">No spoilage recorded. Good.</td></tr>`;
+    : `<tr class="empty-row"><td colspan="5">No spoilage recorded. Good.</td></tr>`;
   document.getElementById('foot-waste').innerHTML = wasteRows.length
     ? `<tr class="total-row"><td colspan="2">TOTAL LOST</td>
-       <td class="strong" style="color:var(--red)">${peso(wasteV)}</td><td></td></tr>` : '';
+       <td class="strong" style="color:var(--red)">${peso(wasteV)}</td><td></td><td></td></tr>` : '';
 
   /* ---- Movement log ---- */
   const logData = logRows();
@@ -596,6 +598,47 @@ document.getElementById('btnDeleteAllLog').addEventListener('click', ()=>{
     renderAll();
     toast(`${records.length} record${records.length===1?'':'s'} permanently deleted`);
   });
+});
+
+/* Delete on a Waste & Losses row removes every waste record behind that
+   row (all of that item's waste in the period shown) — same server-side
+   delete as the Stock Movements bulk delete, so if the item still exists
+   its stock goes back up by what was written off (the waste "never
+   happened"); for an item that's since been deleted there's nothing to
+   restore and the records just disappear. */
+document.getElementById('tbl-waste').addEventListener('click', e=>{
+  const btn = e.target.closest('[data-del-waste]');
+  if(!btn) return;
+  if(!isAdmin()) return toast('Only an Admin can delete records', true);
+  const ids = btn.dataset.delWaste.split(',').map(Number);
+  const records = state.activity.filter(a => ids.includes(a.id));
+  if(!records.length) return toast('Those records no longer exist', true);
+  const name = btn.dataset.wasteName;
+  const back = records.reduce((t,a)=>t+a.qty, 0);
+  const anyItem = records.some(a => byId(a.itemId));
+
+  confirmAction('Delete waste records',
+    `<div class="hint">Permanently delete <strong style="color:var(--text)">${records.length}</strong>
+       waste record${records.length===1?'':'s'} for <strong style="color:var(--text)">${escapeHtml(name)}</strong>?</div>
+     <div class="hint" style="margin-top:10px;color:var(--yellow);">${anyItem
+       ? `The ${Math.round(back*100)/100} written off is added back to that item's stock.`
+       : `That item no longer exists, so there is no stock to add back.`}</div>
+     <div class="hint" style="margin-top:10px;color:var(--red);"><strong>This cannot be undone.</strong>
+       No trace is kept in Reports or any Excel export.</div>`,
+    'Delete permanently',
+    async ()=>{
+      try{
+        await dbDeleteActivityRange(ids);
+      }catch(err){
+        return toast(err.message || 'Could not delete those records', true);
+      }
+      records.forEach(a=>{ if(!a.voided) reverseMovementStock(a); });
+      const idSet = new Set(ids);
+      state.activity = state.activity.filter(a => !idSet.has(a.id));
+      saveState();
+      renderAll();
+      toast(`${records.length} waste record${records.length===1?'':'s'} deleted`);
+    });
 });
 
 /* ============================= SALES (POINT OF SALE) =============================
