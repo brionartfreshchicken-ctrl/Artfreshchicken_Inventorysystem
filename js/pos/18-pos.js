@@ -47,7 +47,7 @@ function renderPOS(){
       <div class="pt-right">
         <div class="pt-price-row">
           <div class="pt-price">${peso(i.selling)}</div>
-          <button class="pt-waste-btn" data-waste="${i.id}" title="Mark spoiled/wasted — removes stock and logs it as waste">🗑</button>
+          <button class="pt-waste-btn" data-waste="${i.id}" title="Remove from POS — logs all remaining stock as waste">🗑</button>
         </div>
         <div class="pt-stock">${left<=0 ? 'none left' : `${Math.round(left*100)/100} ${escapeHtml(i.unit)} left`}</div>
       </div>
@@ -286,6 +286,49 @@ document.getElementById('btnCheckGcashPayment').addEventListener('click', ()=>{
   document.getElementById(id).addEventListener('input', updatePosTotals));
 document.getElementById('pos-paymethod').addEventListener('change', updatePosTotals);
 
+/* The 🗑 button on a tile writes off ALL of that item's remaining stock as
+   waste (after a confirmation), which also takes it off POS since POS
+   hides anything at zero stock. Same writes as the Stock Out modal's
+   "Spoiled / waste" path — stock update + a 'waste' activity row — so it
+   lands in Reports' Waste & Losses and the Excel backup identically. */
+function confirmWasteAll(item){
+  if(!(item.stock > 0)) return toast('Nothing left to remove', true);
+  const qty = item.stock;
+  const qtyText = `${Math.round(qty*100)/100} ${escapeHtml(item.unit)}`;
+  confirmAction('Remove from POS as waste',
+    `<div class="hint">Remove all <strong style="color:var(--text)">${qtyText}</strong> of
+       <strong style="color:var(--text)">${escapeHtml(displayName(item))}</strong> and record it as spoiled/waste?
+       Loss: <b style="color:var(--red)">${peso(qty*item.cost)}</b>. It will disappear from Point of Sale.</div>`,
+    'Remove & log as waste',
+    async ()=>{
+      try{
+        await dbUpdateItemStock(item.id, 0);
+        await logActivity(item, 'out', qty, 'waste');
+      }catch(err){
+        toast(err.message || 'Could not record that waste', true);
+        return;
+      }
+      item.stock = 0;
+      cart = cart.filter(c => c.itemId !== item.id);
+
+      // A Menu Plan food's stock is servings − served, and the next sync
+      // pass rewrites stock from that — so lower Target Servings by the
+      // same amount (same reasoning as the Stock Out modal), otherwise
+      // the food would just reappear on the next render.
+      if(item.sourcePlanId != null && item.sourceFoodId != null){
+        const plan = cosPlans().find(p => p.id === item.sourcePlanId);
+        const food = plan && (plan.foods||[]).find(f => f.id === item.sourceFoodId);
+        if(food){
+          food.servings = Math.max(0, (Number(food.servings)||0) - qty);
+          scheduleCosFoodSync(food);
+        }
+      }
+      saveState();
+      renderAll();
+      toast(`${displayName(item)} removed — ${peso(qty*item.cost)} logged as waste`);
+    });
+}
+
 /* Tile clicks add to the cart */
 
 document.getElementById('posGrid').addEventListener('click', e=>{
@@ -295,7 +338,7 @@ document.getElementById('posGrid').addEventListener('click', e=>{
   const wasteBtn = e.target.closest('[data-waste]');
   if(wasteBtn){
     const item = byId(Number(wasteBtn.dataset.waste));
-    if(item) openQtyModal(item, 'out', false, null, 'waste');
+    if(item) confirmWasteAll(item);
     return;
   }
 
