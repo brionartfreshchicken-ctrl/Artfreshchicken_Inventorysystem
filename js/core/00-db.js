@@ -573,14 +573,18 @@ function mapCosPlanRow(r){
    moves to a different plan afterward, so updates omit it entirely. */
 function cosFoodToRow(f, planId){
   const row = {
-    name: f.name || '', servings: f.servings || 0, served: f.served || 0,
+    name: f.name || '', servings: f.servings || 0,
     price: f.price, prices_hidden: !!f.pricesHidden, collapsed: !!f.collapsed,
     saved_at: f.saved ? new Date(f.saved).toISOString() : null,
     linked_item_id: f.linkedItemId ?? null,
     deducted: f.deducted ?? null,
     deducted_at: f.deductedAt ? new Date(f.deductedAt).toISOString() : null
   };
-  if(planId != null) row.plan_id = planId;
+  // `served` is owned by Point of Sale sales (see dbBumpCosFoodServed) and
+  // deliberately never written by a Menu Plan edit/autosave — a cook's
+  // screen holds an old copy, and writing it back erased what cashiers
+  // had sold since. Only a brand-new food (insert) sets its starting 0.
+  if(planId != null){ row.plan_id = planId; row.served = f.served || 0; }
   return row;
 }
 
@@ -636,9 +640,24 @@ async function dbSyncCosFood(food){
   }
 }
 
-async function dbUpdateCosFoodServed(id, served){
-  const { error } = await sb.from('cos_foods').update({ served }).eq('id', id);
+/* Adds a sale's quantity to the food's CURRENT served count in the
+   database (read, then write) instead of writing this screen's copy —
+   with two cashiers, each holds a stale count. Not a single atomic
+   statement, but the window is a round-trip instead of "however long
+   the screen has been open". Returns the new count. */
+async function dbBumpCosFoodServed(id, qty){
+  const { data, error } = await sb.from('cos_foods').select('served').eq('id', id).single();
   if(error) throw error;
+  const next = (Number(data.served) || 0) + qty;
+  const { error: upErr } = await sb.from('cos_foods').update({ served: next }).eq('id', id);
+  if(upErr) throw upErr;
+  return next;
+}
+
+async function dbFetchCosFoodServed(id, fallback){
+  const { data, error } = await sb.from('cos_foods').select('served').eq('id', id).maybeSingle();
+  if(error || !data) return fallback;
+  return Number(data.served) || 0;
 }
 
 const COS_SYNC_DEBOUNCE_MS = 800;

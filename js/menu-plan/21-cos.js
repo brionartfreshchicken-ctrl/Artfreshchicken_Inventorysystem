@@ -320,6 +320,9 @@ function syncActivePlanFoodsToPOS(){
    food + its lines. Everything syncActivePlanFoodsToPOS does afterward
    for this food is just keeping already-linked local numbers in step. */
 async function syncFoodToPOSAndPersist(f){
+  // Cashiers may have sold some since this screen loaded, so take the
+  // real served count before computing stock from it.
+  f.served = await dbFetchCosFoodServed(f.id, f.served);
   const plan = activePlan();
   const name = (f.name||'').trim();
   const t = foodTotals(f);
@@ -419,8 +422,9 @@ function renderCos(){
           <div class="field"><label>Target Servings</label>
             <input type="number" min="0" step="1" data-fd="servings" data-id="${f.id}" value="${f.servings ?? 0}"/></div>
           <div class="field"><label>Servings Served</label>
-            <input type="number" min="0" step="1" data-fd="served" data-id="${f.id}" value="${f.served ?? 0}"
-                   placeholder="0" title="How many actually went out"/></div>
+            <input type="number" data-fd="served" data-id="${f.id}" value="${f.served ?? 0}" readonly tabindex="-1"
+                   style="background:var(--panel2);cursor:not-allowed;"
+                   title="Counts up by itself as this food is sold on Point of Sale — it can't be edited"/></div>
           <div class="field"><label>Selling Price per Serving (₱)</label>
             <input type="number" min="0" step="any" data-fd="price" data-id="${f.id}" value="${f.price ?? 0}"/></div>
         </div>
@@ -577,6 +581,7 @@ document.getElementById('cos-foods').addEventListener(ev, e=>{
   if(fd){
     const f = cosFood(fd.dataset.id); if(!f) return;
     const k = fd.dataset.fd;
+    if(k === 'served') return;   // POS owns this number; the field is read-only
     f[k] = (k === 'name') ? fd.value : (Number(fd.value) || 0);
     if(f.saved) markUnsaved(f);
 
