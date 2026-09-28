@@ -738,8 +738,10 @@
       </div>
 
       <div class="card">
-        <div class="card-head"><div class="ct">Best Sellers</div><div class="hint">Ranked by profit earned</div></div>
-        <div class="card-body" style="padding:0;">
+        <div class="card-head collapsible-head" data-toggle-target="bestSellersBox">
+          <div class="ct">Best Sellers</div><div class="hint">Ranked by profit earned</div>
+          <span class="collapse-arrow">▾</span></div>
+        <div class="card-body" id="bestSellersBox" style="padding:0;">
           <table><thead><tr>
             <th>Item</th><th>Category</th><th>Qty Sold</th><th>Revenue</th><th>Cost</th><th>Profit</th><th>Margin</th>
           </tr></thead><tbody id="tbl-best"></tbody><tfoot id="foot-best"></tfoot></table>
@@ -747,8 +749,9 @@
       </div>
 
       <div class="card">
-        <div class="card-head"><div class="ct">By Category</div></div>
-        <div class="card-body" style="padding:0;">
+        <div class="card-head collapsible-head" data-toggle-target="byCategoryBox">
+          <div class="ct">By Category</div><span class="collapse-arrow">▾</span></div>
+        <div class="card-body" id="byCategoryBox" style="padding:0;">
           <table><thead><tr>
             <th>Category</th><th>Qty Sold</th><th>Revenue</th><th>Cost</th><th>Profit</th><th>Share of Revenue</th>
           </tr></thead><tbody id="tbl-bycat"></tbody></table>
@@ -765,8 +768,10 @@
       </div>
 
       <div class="card">
-        <div class="card-head"><div class="ct">Restock List</div><div class="hint">What to buy on the next supply run</div></div>
-        <div class="card-body" style="padding:0;">
+        <div class="card-head collapsible-head" data-toggle-target="restockListBox">
+          <div class="ct">Restock List</div><div class="hint">What to buy on the next supply run</div>
+          <span class="collapse-arrow">▾</span></div>
+        <div class="card-body" id="restockListBox" style="padding:0;">
           <table><thead><tr>
             <th>Item</th><th>Category</th><th>Left</th><th>Alert At</th><th>Cost/Unit</th><th>Status</th>
           </tr></thead><tbody id="tbl-restock"></tbody></table>
