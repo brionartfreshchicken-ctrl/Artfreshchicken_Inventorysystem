@@ -48,6 +48,9 @@ begin
   if p_items is null or jsonb_array_length(p_items) = 0 then
     raise exception 'A sale needs at least one item';
   end if;
+  if coalesce(p_discount, 0) < 0 or coalesce(p_extra_charge, 0) < 0 then
+    raise exception 'Discount and extra charge cannot be negative';
+  end if;
 
   select name into v_by_name from public.profiles where id = v_by_id;
 
@@ -64,6 +67,14 @@ begin
     end if;
     if v_item.selling is null then
       raise exception '% has no selling price and cannot be sold', v_item.name;
+    end if;
+    -- A zero/negative qty was never rejected: it slips past "qty > stock"
+    -- (a negative is never greater than a positive stock figure), then
+    -- ADDS to stock instead of removing it (subtracting a negative) while
+    -- recording negative revenue — free stock and a self-correcting books
+    -- entry, from an ordinary signed-in account.
+    if v_line.qty is null or v_line.qty <= 0 then
+      raise exception 'Quantity must be greater than zero';
     end if;
     if v_line.qty > v_item.stock then
       raise exception 'Not enough % — only % left', v_item.name, v_item.stock;
