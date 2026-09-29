@@ -1379,6 +1379,17 @@ declare
   v_by_id uuid := (select auth.uid());
   v_by_name text;
 begin
+  -- create-or-replace with a changed parameter list defines this as a new
+  -- function object, and Postgres grants EXECUTE to PUBLIC by default on
+  -- creation — the explicit revoke below closes that, but this check is
+  -- the real backstop: complete_sale() has no is_admin() gate (any signed-
+  -- in Staff can check out a sale), so an auth check is the only thing
+  -- standing between this and an anonymous caller minting fake sales and
+  -- decrementing real stock using nothing but the public anon key.
+  if v_by_id is null then
+    raise exception 'Sign in required';
+  end if;
+
   if p_items is null or jsonb_array_length(p_items) = 0 then
     raise exception 'A sale needs at least one item';
   end if;
@@ -1432,5 +1443,10 @@ begin
 end;
 $$;
 
+-- New function object (different signature) => Postgres defaults its
+-- EXECUTE privilege to PUBLIC on creation. Must be revoked explicitly,
+-- same as 0019 did for the 5-arg version this replaces — otherwise an
+-- unauthenticated request (the anon key alone) could call this.
+revoke execute on function public.complete_sale(jsonb, numeric, text, numeric, numeric, numeric, text) from public;
 grant execute on function public.complete_sale(jsonb, numeric, text, numeric, numeric, numeric, text) to authenticated;
 
