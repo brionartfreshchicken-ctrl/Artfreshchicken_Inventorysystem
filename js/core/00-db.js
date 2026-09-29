@@ -552,6 +552,7 @@ function mapCosFoodRow(r){
     price: r.price == null ? null : Number(r.price),
     pricesHidden: !!r.prices_hidden, collapsed: !!r.collapsed,
     saved: r.saved_at ? new Date(r.saved_at).getTime() : null,
+    savedBy: r.saved_by || null,
     linkedItemId: r.linked_item_id,
     deducted: r.deducted || null,
     deductedAt: r.deducted_at ? new Date(r.deducted_at).getTime() : null,
@@ -576,6 +577,7 @@ function cosFoodToRow(f, planId){
     name: f.name || '', servings: f.servings || 0,
     price: f.price, prices_hidden: !!f.pricesHidden, collapsed: !!f.collapsed,
     saved_at: f.saved ? new Date(f.saved).toISOString() : null,
+    saved_by: f.savedBy ?? null,
     linked_item_id: f.linkedItemId ?? null,
     deducted: f.deducted ?? null,
     deducted_at: f.deductedAt ? new Date(f.deductedAt).toISOString() : null

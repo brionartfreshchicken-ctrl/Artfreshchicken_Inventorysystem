@@ -1,4 +1,4 @@
--- FoodTrack: full Supabase schema (all migrations 0001-0021 concatenated)
+-- FoodTrack: full Supabase schema (all migrations 0001-0022 concatenated)
 -- Paste this whole file into the Supabase SQL Editor and click Run.
 
 -- ============================================================
@@ -1329,4 +1329,12 @@ grant execute on function public.delete_activity_range(bigint[]) to authenticate
 alter table public.items drop constraint items_category_check;
 alter table public.items add constraint items_category_check
   check (category in ('snack', 'drink', 'food', 'ingredient', 'tools'));
+
+-- ============================================================
+-- 0022: track who saved each Menu Plan food (the cook), so
+-- Food Costing reports can show it. Set once, at Save time —
+-- never overwritten by a later edit/autosave, same as `served`.
+-- ============================================================
+
+alter table public.cos_foods add column saved_by text;
 

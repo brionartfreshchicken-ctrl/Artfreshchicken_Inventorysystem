@@ -930,7 +930,7 @@ function renderProfitability(){
   const foodRows = [];
   cosPlans().forEach(p=>{
     (p.foods||[]).forEach(f=>{
-      foodRows.push({ plan: planLabel(p), food: f.name || 'Untitled', t: foodTotals(f) });
+      foodRows.push({ plan: planLabel(p), food: f.name || 'Untitled', cook: f.savedBy || '—', t: foodTotals(f) });
     });
   });
 
@@ -938,13 +938,14 @@ function renderProfitability(){
     ? foodRows.map(r=>`<tr>
         <td class="muted">${escapeHtml(r.plan)}</td>
         <td>${escapeHtml(r.food)}</td>
+        <td class="muted">${escapeHtml(r.cook)}</td>
         <td class="num">${peso(r.t.sales)}</td>
         <td class="num">${peso(r.t.cost)}</td>
         <td class="num strong">${peso(r.t.profit)}</td>
         <td class="num strong" style="${r.t.actualProfit<0?'color:var(--red)':'color:var(--green)'}">${peso(r.t.actualProfit)}</td>
         <td class="num muted">${r.t.sales>0 ? r.t.margin.toFixed(1)+'%' : '—'}</td>
       </tr>`).join('')
-    : `<tr class="empty-row"><td colspan="7">No foods planned yet.</td></tr>`;
+    : `<tr class="empty-row"><td colspan="8">No foods planned yet.</td></tr>`;
 
   let fTotSales = 0, fTotCost = 0, fTotGross = 0, fTotActual = 0, fTotSalesActual = 0;
   if(foodRows.length){
@@ -954,7 +955,7 @@ function renderProfitability(){
     fTotActual = foodRows.reduce((t,r)=>t+r.t.actualProfit,0);
     fTotSalesActual = foodRows.reduce((t,r)=>t+r.t.actualSales,0);
     foodFoot.innerHTML = `<tr class="total-row">
-      <td colspan="2">TOTAL — ${foodRows.length} food${foodRows.length===1?'':'s'}</td>
+      <td colspan="3">TOTAL — ${foodRows.length} food${foodRows.length===1?'':'s'}</td>
       <td class="num">${peso(fTotSales)}</td><td class="num">${peso(fTotCost)}</td>
       <td class="num strong">${peso(fTotGross)}</td>
       <td class="num strong">${peso(fTotActual)}</td>
@@ -1664,7 +1665,7 @@ async function downloadEverything(){
     (p.foods||[]).forEach(f=>{
       const t = foodTotals(f);
       foodProfitSheet.push({
-        Plan: planLabel(p), Food: f.name || 'Untitled',
+        Plan: planLabel(p), Food: f.name || 'Untitled', Cook: f.savedBy || '',
         Revenue: round2(t.sales), Cost: round2(t.cost),
         'Gross Profit': round2(t.profit), 'Actual Profit': round2(t.actualProfit),
         Margin: t.sales>0 ? round2(t.margin)+'%' : '—'
@@ -1694,7 +1695,7 @@ async function downloadEverything(){
     (p.foods||[]).forEach(f=>{
       (f.lines||[]).forEach(l=>{
         foodPlanDetailSheet.push({
-          Plan: planLabel(p), Food: f.name || 'Untitled', Ingredient: l.name || '',
+          Plan: planLabel(p), Food: f.name || 'Untitled', Cook: f.savedBy || '', Ingredient: l.name || '',
           Quantity: l.qty || '', 'Unit Price': l.priceNum != null ? round2(l.priceNum) : '',
           'Total Cost': round2(l.total || 0)
         });

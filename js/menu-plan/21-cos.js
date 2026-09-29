@@ -722,6 +722,7 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
 
     const finish = async (note)=>{
       f.saved = Date.now();
+      f.savedBy = f.savedBy || (currentUser ? currentUser.name : null);   // credit whoever saved it first
       f.pricesHidden = true;
       f.collapsed = true;
       try{
