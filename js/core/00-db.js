@@ -358,7 +358,9 @@ function mapSaleRow(r){
       itemId: i.item_id, name: i.name, qty: Number(i.qty),
       unitPrice: Number(i.unit_price), lineTotal: Number(i.line_total)
     })),
-    subtotal: Number(r.subtotal), discount: Number(r.discount), total: Number(r.total),
+    subtotal: Number(r.subtotal), discount: Number(r.discount),
+    extraCharge: Number(r.extra_charge) || 0, extraChargeLabel: r.extra_charge_label || null,
+    total: Number(r.total),
     paymentMethod: r.payment_method,
     cashReceived: r.cash_received == null ? null : Number(r.cash_received),
     change: r.change == null ? null : Number(r.change),
@@ -371,13 +373,14 @@ function mapSaleRow(r){
    activity rows, and the sale + sale_items record all happen atomically,
    with stock re-checked server-side so two terminals can't both sell the
    last unit of something at once. */
-async function dbCompleteSale({ items, discount, paymentMethod, cashReceived, change }){
+async function dbCompleteSale({ items, discount, paymentMethod, cashReceived, change, extraCharge, extraChargeLabel }){
   const { data: saleId, error } = await sb.rpc('complete_sale', {
     p_items: items.map(i => ({
       item_id: i.itemId, name: i.name, qty: i.qty, unit_price: i.unitPrice, line_total: i.lineTotal
     })),
     p_discount: discount, p_payment_method: paymentMethod,
-    p_cash_received: cashReceived, p_change: change
+    p_cash_received: cashReceived, p_change: change,
+    p_extra_charge: extraCharge || 0, p_extra_charge_label: extraChargeLabel || null
   });
   if(error) throw error;
 

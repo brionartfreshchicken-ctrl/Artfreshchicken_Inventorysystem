@@ -179,7 +179,9 @@ async function downloadTransactionsReport(){
   const txnSheet = list.map(s=>({
     'Transaction #': s.txnNumber, Date: new Date(s.ts).toLocaleString(), Cashier: s.cashier||'',
     'Product(s)': (s.items||[]).map(i=>`${i.qty}x ${i.name}`).join(', '),
-    Items: s.items.length, Subtotal: round2(s.subtotal), Discount: round2(s.discount),
+    Items: s.items.length, Subtotal: round2(s.subtotal),
+    'Extra Charge': round2(s.extraCharge||0), 'Extra Charge For': s.extraChargeLabel||'',
+    Discount: round2(s.discount),
     Total: round2(s.total), Payment: paymentLabel(s.paymentMethod),
     'Cash Received': s.cashReceived!=null ? round2(s.cashReceived) : '',
     Change: s.change!=null ? round2(s.change) : '',
@@ -333,6 +335,7 @@ function viewSaleDetail(sale){
       </tr>`).join('')}
     </tbody><tfoot>
       <tr class="total-row"><td colspan="3">Subtotal</td><td class="num">${peso(sale.subtotal)}</td></tr>
+      ${sale.extraCharge>0 ? `<tr class="total-row"><td colspan="3">${escapeHtml(sale.extraChargeLabel || 'Extra Charge')}</td><td class="num">+ ${peso(sale.extraCharge)}</td></tr>` : ''}
       ${sale.discount>0 ? `<tr class="total-row"><td colspan="3">Discount</td><td class="num">− ${peso(sale.discount)}</td></tr>` : ''}
       <tr class="total-row"><td colspan="3">TOTAL</td><td class="num strong">${peso(sale.total)}</td></tr>
     </tfoot></table>
@@ -1780,7 +1783,9 @@ async function downloadEverything(){
 
   const transactionSheet = (state.sales||[]).slice().sort((a,b)=>a.ts-b.ts).map(s=>({
     'Transaction #': s.txnNumber, Date: new Date(s.ts).toLocaleString(), Cashier: s.cashier||'',
-    Items: s.items.length, Subtotal: round2(s.subtotal), Discount: round2(s.discount),
+    Items: s.items.length, Subtotal: round2(s.subtotal),
+    'Extra Charge': round2(s.extraCharge||0), 'Extra Charge For': s.extraChargeLabel||'',
+    Discount: round2(s.discount),
     Total: round2(s.total), Payment: paymentLabel(s.paymentMethod),
     'Cash Received': s.cashReceived!=null ? round2(s.cashReceived) : '',
     Change: s.change!=null ? round2(s.change) : '',

@@ -129,6 +129,7 @@ function renderCart(){
         <div class="ct-line"><span>Cost</span><span class="ct-val">${peso(tot.puhunan)}</span></div>
         <div class="ct-line tubo"><span>Profit</span><span class="ct-val">${peso(tot.tubo)}</span></div>` : ''}
       <div class="ct-line"><span>Subtotal</span><span class="ct-val">${peso(tot.benta)}</span></div>
+      <div class="ct-line" id="ct-extra-line" style="display:none;"><span id="ct-extra-label">Extra Charge</span><span class="ct-val" id="ct-extra-val"></span></div>
       <div class="ct-line" id="ct-discount-line" style="display:none;"><span>Discount</span><span class="ct-val" id="ct-discount-val"></span></div>
       <div class="ct-line big"><span>Total to charge</span><span class="ct-val" id="ct-grand-total">${peso(tot.benta)}</span></div>
     </div>` : '';
@@ -150,8 +151,17 @@ function cartDiscount(){
   return Math.min(raw, subtotal);   // never discount past ₱0
 }
 
+/* A flat add-on for something the customer asked for that isn't a
+   stocked product — e.g. a cooking fee for eggs they want fried. Not
+   tied to any item, so (like discount) it doesn't appear in Best
+   Sellers/By Category — only in the sale's own total and receipt. */
+function cartExtraCharge(){
+  const raw = parseFloat(document.getElementById('pos-extra-amount').value);
+  return (isNaN(raw) || raw < 0) ? 0 : raw;
+}
+
 function cartGrandTotal(){
-  return Math.max(0, computeCartTotals().benta - cartDiscount());
+  return Math.max(0, computeCartTotals().benta - cartDiscount() + cartExtraCharge());
 }
 
 function updatePosTotals(){
@@ -161,12 +171,20 @@ function updatePosTotals(){
     return;
   }
   const discount = cartDiscount();
+  const extra = cartExtraCharge();
   const total = cartGrandTotal();
 
   const discLine = document.getElementById('ct-discount-line');
   if(discLine){
     discLine.style.display = discount > 0 ? '' : 'none';
     document.getElementById('ct-discount-val').textContent = `− ${peso(discount)}`;
+  }
+  const extraLine = document.getElementById('ct-extra-line');
+  if(extraLine){
+    extraLine.style.display = extra > 0 ? '' : 'none';
+    const label = document.getElementById('pos-extra-label').value.trim();
+    document.getElementById('ct-extra-label').textContent = label || 'Extra Charge';
+    document.getElementById('ct-extra-val').textContent = `+ ${peso(extra)}`;
   }
   const totalEl = document.getElementById('ct-grand-total');
   if(totalEl) totalEl.textContent = peso(total);
@@ -282,7 +300,7 @@ document.getElementById('btnCheckGcashPayment').addEventListener('click', ()=>{
   }, 1200);
 });
 
-['pos-discount','pos-cash'].forEach(id=>
+['pos-discount','pos-cash','pos-extra-amount','pos-extra-label'].forEach(id=>
   document.getElementById(id).addEventListener('input', updatePosTotals));
 document.getElementById('pos-paymethod').addEventListener('change', updatePosTotals);
 
@@ -438,6 +456,8 @@ document.getElementById('btnCompleteSale').addEventListener('click', async ()=>{
 
   const tot = computeCartTotals();
   const discount = cartDiscount();
+  const extraCharge = cartExtraCharge();
+  const extraChargeLabel = document.getElementById('pos-extra-label').value.trim();
   const total = cartGrandTotal();
   const paymentMethod = document.getElementById('pos-paymethod').value;
   let cashReceived = null, change = null;
@@ -462,7 +482,7 @@ document.getElementById('btnCompleteSale').addEventListener('click', async ()=>{
   // record atomically — see there for why this isn't several client calls.
   let sale;
   try{
-    sale = await dbCompleteSale({ items: saleItems, discount, paymentMethod, cashReceived, change });
+    sale = await dbCompleteSale({ items: saleItems, discount, paymentMethod, cashReceived, change, extraCharge, extraChargeLabel });
   }catch(err){
     toast(err.message || 'Could not record that sale', true);
     return;
@@ -491,6 +511,8 @@ document.getElementById('btnCompleteSale').addEventListener('click', async ()=>{
 
   cart = [];
   document.getElementById('pos-discount').value = 0;
+  document.getElementById('pos-extra-amount').value = 0;
+  document.getElementById('pos-extra-label').value = '';
   document.getElementById('pos-cash').value = '';
   document.getElementById('pos-change').value = '₱0.00';
   gcashConfirmed = false;
@@ -500,7 +522,7 @@ document.getElementById('btnCompleteSale').addEventListener('click', async ()=>{
   renderAll();
   const changeMsg = paymentMethod==='cash' ? `, change ${peso(change)}` : '';
   const msg = isAdmin()
-    ? `${sale.txnNumber} — revenue ${peso(total)}, profit ${peso(tot.tubo-discount)}${changeMsg}`
+    ? `${sale.txnNumber} — revenue ${peso(total)}, profit ${peso(tot.tubo-discount+extraCharge)}${changeMsg}`
     : `${sale.txnNumber} — ${peso(total)} collected${changeMsg}`;
   toast(msg, 'success');
 });
