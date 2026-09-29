@@ -1336,8 +1336,14 @@ function applyDeductionDelta(food, result){
       // caller in this file into async just for that.
       dbUpdateItemStock(item.id, item.stock).catch(err =>
         toast('Could not save that stock change: ' + err.message, true));
-      logActivity(item, 'out', used, 'used').catch(err =>
-        toast('Could not save that movement: ' + err.message, true));
+      // used can be 0 when the item was already out of stock (Math.min
+      // against a stock of 0) — nothing actually moved, and the activity
+      // table now rejects a zero qty outright (0026), so skip logging a
+      // movement that didn't happen instead of surfacing that as an error.
+      if(used > 0){
+        logActivity(item, 'out', used, 'used').catch(err =>
+          toast('Could not save that movement: ' + err.message, true));
+      }
     }else{
       const given = -change;
       item.stock = Math.round((item.stock + given) * 1000) / 1000;
