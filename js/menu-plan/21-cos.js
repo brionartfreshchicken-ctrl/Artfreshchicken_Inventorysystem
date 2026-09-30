@@ -39,21 +39,49 @@ async function newCosPlan(name, date){
   return p;
 }
 
+/* No more upfront "how many servings will this make" guess — a food
+   starts with no target at all (0) and simply stays sellable (see
+   COS_UNLIMITED_STOCK below) until the cashier taps Sold Out on POS. */
 async function newCosFood(name){
   const plan = activePlan();
-  const f = await dbInsertCosFood(plan.id, { name: name || 'New Food', servings: 10, served: 0, price: 0, lines: [] });
+  const f = await dbInsertCosFood(plan.id, { name: name || 'New Food', servings: 0, served: 0, price: 0, lines: [] });
   cosFoods().push(f);
   return f;
 }
 
+/* A Menu Plan food with no set target stays on POS with this much
+   (nominal) stock — effectively unlimited for a single day's service —
+   until it's explicitly marked Sold Out, at which point stock drops to 0. */
+const COS_UNLIMITED_STOCK = 9999;
+
+/* The mirrored POS item's stock: 0 once marked Sold Out, otherwise the
+   real (servings − served) for any food that still sets a target
+   (backward-compatible with plans saved before this change), or the
+   unlimited sentinel for the new, target-free default. */
+function cosRemainingStock(f){
+  if(f.soldOut) return 0;
+  const servings = Number(f.servings) || 0;
+  if(servings > 0) return Math.max(0, servings - (Number(f.served)||0));
+  return COS_UNLIMITED_STOCK;
+}
+
 /* ---------- Maths ---------- */
 
+/* `servings` is an OPTIONAL target — 0 means "no target set," the
+   normal case now that Sold Out replaces it. Once a food is sold out,
+   whatever was actually served becomes the effective target for
+   reporting purposes (nothing left = nothing unsold, 100% sell-through),
+   regardless of what number (if any) was typed in beforehand — this also
+   quietly fixes the old "guessed too low" problem for any food that
+   still sets a real target. */
 function foodTotals(f){
   const cost     = (f.lines||[]).reduce((t,l)=>t + (Number(l.total)||0), 0);
-  const servings = Number(f.servings) || 0;          // planned
+  const servings = Number(f.servings) || 0;          // optional planned target
   const served   = Number(f.served) || 0;            // actually served
   const price    = Number(f.price) || 0;
-  const sales    = servings * price;                 // if everything sells
+  const effectiveTarget = f.soldOut ? served : servings;
+  const hasTarget = effectiveTarget > 0;
+  const sales    = hasTarget ? effectiveTarget * price : served * price;   // best-known "if everything sells"
   const profit   = sales - cost;
 
   /* What really happened. Ingredient cost is already spent whether the food
@@ -61,14 +89,21 @@ function foodTotals(f){
   const actualSales  = served * price;
   const actualProfit = actualSales - cost;
 
+  // What a plan-level average should divide by: the known total once
+  // there is one (an explicit target, or sold-out's final served count),
+  // otherwise served-so-far as the best available estimate — same
+  // fallback perServing above already uses for this one food.
+  const denom = hasTarget ? effectiveTarget : served;
+
   return {
-    cost, servings, served, price, sales, profit,
+    cost, servings, served, price, sales, profit, soldOut: !!f.soldOut,
+    effectiveTarget, denom,
     margin: sales > 0 ? (profit / sales * 100) : 0,
-    perServing: servings > 0 ? cost / servings : 0,
+    perServing: hasTarget ? cost / effectiveTarget : (served > 0 ? cost / served : 0),
     actualSales, actualProfit,
     actualMargin: actualSales > 0 ? (actualProfit / actualSales * 100) : 0,
-    unsold: Math.max(0, servings - served),
-    sellThrough: servings > 0 ? (served / servings * 100) : 0
+    unsold: hasTarget ? Math.max(0, effectiveTarget - served) : 0,
+    sellThrough: hasTarget ? (served / effectiveTarget * 100) : (served > 0 ? 100 : 0)
   };
 }
 
@@ -82,18 +117,23 @@ function planTotals(plan){
   const foods    = list.map(f => ({food:f, t: foodTotals(f)}));
   const cost     = foods.reduce((n,x)=>n + x.t.cost, 0);
   const sales    = foods.reduce((n,x)=>n + x.t.sales, 0);
-  const servings = foods.reduce((n,x)=>n + x.t.servings, 0);
+  // Sum of each food's KNOWN total (an explicit target, or sold-out's
+  // final count) — foods still selling with no target contribute 0 here
+  // (their potential is still captured in `sales` via foodTotals' own
+  // served-based fallback), so this never overstates what's actually known.
+  const servings = foods.reduce((n,x)=>n + x.t.effectiveTarget, 0);
   const served   = foods.reduce((n,x)=>n + x.t.served, 0);
+  const unsold   = foods.reduce((n,x)=>n + x.t.unsold, 0);
+  const denom    = foods.reduce((n,x)=>n + x.t.denom, 0);
   const actualSales = foods.reduce((n,x)=>n + x.t.actualSales, 0);
   const profit   = sales - cost;
   const actualProfit = actualSales - cost;
   return {
-    foods, cost, sales, servings, served, profit,
+    foods, cost, sales, servings, served, unsold, denom, profit,
     actualSales, actualProfit,
     margin: sales > 0 ? (profit / sales * 100) : 0,
     actualMargin: actualSales > 0 ? (actualProfit / actualSales * 100) : 0,
-    unsold: Math.max(0, servings - served),
-    sellThrough: servings > 0 ? (served / servings * 100) : 0
+    sellThrough: servings > 0 ? (served / servings * 100) : (served > 0 ? 100 : 0)
   };
 }
 
@@ -244,12 +284,13 @@ function foodMiniHtml(t){
   const losing  = t.actualProfit < 0;
   const col     = losing ? 'var(--red)' : 'var(--green)';
   const short   = t.unsold > 0;
+  const hasTarget = !t.soldOut && t.servings > 0;   // an explicit target set on this food, still selling
   return `
     <div><div class="fm-l">Cost</div><div class="fm-v">${peso(t.cost)}</div></div>
     <div><div class="fm-l">Per Serving</div><div class="fm-v">${peso(t.perServing)}</div></div>
     <div><div class="fm-l">Served</div>
-      <div class="fm-v" style="color:${short?'var(--yellow)':'var(--green)'}">${t.served} / ${t.servings}</div>
-      <div class="fm-s">${short ? t.unsold+' unsold' : t.servings>0 ? 'all served' : '—'}</div></div>
+      <div class="fm-v" style="color:${short?'var(--yellow)':'var(--green)'}">${hasTarget ? `${t.served} / ${t.servings}` : t.served}</div>
+      <div class="fm-s">${t.soldOut ? 'sold out' : short ? t.unsold+' unsold' : hasTarget ? 'all served' : 'selling'}</div></div>
     <div><div class="fm-l">Sales</div><div class="fm-v">${peso(t.actualSales)}</div>
       <div class="fm-s">plan ${peso(t.sales)}</div></div>
     <div><div class="fm-l">Profit</div>
@@ -295,7 +336,7 @@ function syncActivePlanFoodsToPOS(){
       return;
     }
     const t = foodTotals(f);
-    const remaining = Math.max(0, (Number(f.servings)||0) - (Number(f.served)||0));
+    const remaining = cosRemainingStock(f);
     // A brand-new mirrored item is only ever created at Save time (see
     // btnCosSave's finish()/syncFoodToPOSAndPersist below), where it can
     // be inserted into Supabase and get a real id before anything
@@ -326,7 +367,7 @@ async function syncFoodToPOSAndPersist(f){
   const plan = activePlan();
   const name = (f.name||'').trim();
   const t = foodTotals(f);
-  const remaining = Math.max(0, (Number(f.servings)||0) - (Number(f.served)||0));
+  const remaining = cosRemainingStock(f);
   const payload = {
     category:'food', name, size:'', stock: remaining, unit:'serving',
     cost: t.perServing || 0, selling: f.price!=null ? Number(f.price) : null,
@@ -399,7 +440,7 @@ function renderCos(){
         <span class="chip">${idx+1}</span>
         <input class="cos-food-name" data-fd="name" data-id="${f.id}"
                value="${escapeHtml(f.name||'')}" placeholder="Dish name"/>
-        <span class="hint">${peso(t.cost)} of ingredients · ${t.served}/${t.servings} served</span>
+        <span class="hint">${peso(t.cost)} of ingredients · ${t.served} served${t.soldOut?' · sold out':''}</span>
         ${f.saved
           ? '<span class="chip saved">saved · on POS</span>'
           : '<span class="chip" style="background:var(--yellow-bg,#fff7e6);color:var(--yellow,#b45309);" title="Click Save below to put this on Point of Sale">not on POS yet</span>'}
@@ -411,20 +452,19 @@ function renderCos(){
         <button class="btn small danger" data-fd-del="${f.id}" title="Remove this food">×</button>
       </div>
 
-      ${(Number(f.servings)||0) > 0 && (Number(f.served)||0) >= Number(f.servings) ? `
+      ${f.soldOut ? `
       <div class="cos-soldout-banner">
-        <span>🔴</span> Sold Out — all ${f.servings} serving${f.servings===1?'':'s'} served.
-        Taken off Point of Sale until you raise Target Servings.
+        <span>🔴</span> Sold Out — ${t.served} serving${t.served===1?'':'s'} served today. Taken off Point of Sale.
+        <button class="btn small ghost" data-fd-unsoldout="${f.id}" style="margin-left:8px;"
+          title="Bring this food back on Point of Sale">Undo</button>
       </div>` : ''}
 
       <div class="card-body">
         <div class="field-row">
-          <div class="field"><label>Target Servings</label>
-            <input type="number" min="0" step="1" data-fd="servings" data-id="${f.id}" value="${f.servings ?? 0}"/></div>
           <div class="field"><label>Servings Served</label>
             <input type="number" data-fd="served" data-id="${f.id}" value="${f.served ?? 0}" readonly tabindex="-1"
                    style="background:var(--panel2);cursor:not-allowed;"
-                   title="Counts up by itself as this food is sold on Point of Sale — it can't be edited"/></div>
+                   title="Counts up by itself as this food is sold on Point of Sale — it can't be edited. There's no target to set: it stays sellable until marked Sold Out on the POS tile."/></div>
           <div class="field"><label>Selling Price per Serving (₱)</label>
             <input type="number" min="0" step="any" data-fd="price" data-id="${f.id}" value="${f.price ?? 0}"/></div>
         </div>
@@ -510,7 +550,7 @@ function refreshCosNumbers(){
   // flow strip, program level
   document.getElementById('cs-cost').textContent     = peso(P.cost);
   document.getElementById('cs-lines').textContent    = P.foods.length;
-  document.getElementById('cs-servings').textContent = `${P.served}/${P.servings}`;
+  document.getElementById('cs-servings').textContent = P.servings > 0 ? `${P.served}/${P.servings}` : `${P.served} served`;
   document.getElementById('cs-price').textContent    = peso(P.sales);
   document.getElementById('cs-margin').textContent   = P.actualSales>0
     ? P.actualMargin.toFixed(1)+'%'
@@ -521,7 +561,7 @@ function refreshCosNumbers(){
     const tot  = document.querySelector(`[data-fd-total="${food.id}"]`);
     if(tot) tot.textContent = peso(t.cost);
     const head = document.querySelector(`.cos-food[data-food="${food.id}"] .card-head .hint`);
-    if(head) head.textContent = `${peso(t.cost)} of ingredients · ${t.served}/${t.servings} served`;
+    if(head) head.textContent = `${peso(t.cost)} of ingredients · ${t.served} served${t.soldOut?' · sold out':''}`;
     const mini = document.querySelector(`[data-fd-mini="${food.id}"]`);
     if(mini) mini.innerHTML = foodMiniHtml(t);
   });
@@ -535,13 +575,12 @@ function refreshCosNumbers(){
 
   document.getElementById('cos-sum-plan').innerHTML = `
     <tr><td>Foods Planned</td><td class="num">${P.foods.length}</td></tr>
-    <tr><td>Target Servings</td><td class="num">${P.servings} servings</td></tr>
     <tr><td>Servings Served</td>
       <td class="num" style="color:${P.unsold>0?'var(--yellow)':'var(--green)'}">${P.served} servings</td></tr>
     <tr><td>Unsold</td>
       <td class="num">${P.unsold}${P.servings>0 ? ` (${(100-P.sellThrough).toFixed(0)}%)` : ''}</td></tr>
     <tr><td>Average Cost per Serving</td>
-      <td class="num">${peso(P.servings>0 ? P.cost/P.servings : 0)}</td></tr>
+      <td class="num">${peso(P.denom>0 ? P.cost/P.denom : 0)}</td></tr>
     <tr class="hl"><td>Total Potential Sales</td><td class="num">${peso(P.sales)}</td></tr>`;
 
   const losing = P.actualProfit < 0;
@@ -784,6 +823,16 @@ document.getElementById('cos-foods').addEventListener('click', e=>{
     return;
   }
 
+  const unsoldOut = e.target.closest('[data-fd-unsoldout]');
+  if(unsoldOut){
+    const f = cosFood(unsoldOut.dataset.fdUnsoldout); if(!f) return;
+    f.soldOut = false;
+    saveState(); renderCos();
+    scheduleCosFoodSync(f);
+    toast(`${f.name||'Food'} back on Point of Sale`);
+    return;
+  }
+
   const prices = e.target.closest('[data-fd-prices]');
   if(prices){
     const f = cosFood(prices.dataset.fdPrices); if(!f) return;
@@ -940,7 +989,7 @@ function renderCosHistory(){
         ${me ? '<span class="chip">open</span>' : ''}</td>
       <td class="num">${(p.foods||[]).length}</td>
       <td class="num">${peso(T.cost)}</td>
-      <td class="num">${T.served}/${T.servings}</td>
+      <td class="num">${T.servings>0 ? `${T.served}/${T.servings}` : `${T.served} served`}</td>
       <td class="num">${peso(T.actualSales)}</td>
       <td class="num strong" style="color:${losing?'var(--red)':'var(--green)'}">${peso(T.actualProfit)}</td>
       <td class="num" style="white-space:nowrap;">
@@ -1154,7 +1203,7 @@ function buildCosPlanSheet(plan){
     (food.lines||[]).forEach((l,i)=>
       sheet.push([i+1, l.name||'', l.qty||'', l.unit||'', round2(l.total)]));
     sheet.push(['','','','Ingredient Cost',   round2(t.cost)]);
-    sheet.push(['','','','Servings',          t.servings]);
+    sheet.push(['','','','Servings Served',   t.served]);
     sheet.push(['','','','Price per Serving', round2(t.price)]);
     sheet.push(['','','','Cost per Serving',  round2(t.perServing)]);
     sheet.push(['','','','Potential Sales',   round2(t.sales)]);
@@ -1167,8 +1216,8 @@ function buildCosPlanSheet(plan){
     [],
     ['PRODUCTION AND SALES PLAN'],
     ['Foods Planned', P.foods.length],
-    ['Total Servings', P.servings],
-    ['Average Cost per Serving', round2(P.servings>0 ? P.cost/P.servings : 0)],
+    ['Total Servings Served', P.served],
+    ['Average Cost per Serving', round2(P.denom>0 ? P.cost/P.denom : 0)],
     ['Total Potential Sales', round2(P.sales)],
     [],
     ['EXPECTED PROFIT'],

@@ -47,9 +47,10 @@ function renderPOS(){
       <div class="pt-right">
         <div class="pt-price-row">
           <div class="pt-price">${peso(i.selling)}</div>
+          ${i.sourceFoodId != null ? `<button class="pt-waste-btn" data-soldout="${i.id}" title="Mark this food Sold Out — takes it off Point of Sale, no loss logged">🔴</button>` : ''}
           <button class="pt-waste-btn" data-waste="${i.id}" title="Remove from POS — logs all remaining stock as waste">🗑</button>
         </div>
-        <div class="pt-stock">${left<=0 ? 'none left' : `${Math.round(left*100)/100} ${escapeHtml(i.unit)} left`}</div>
+        <div class="pt-stock">${left<=0 ? 'none left' : left>100 ? 'available' : `${Math.round(left*100)/100} ${escapeHtml(i.unit)} left`}</div>
       </div>
     </div>`;
   };
@@ -329,21 +330,57 @@ function confirmWasteAll(item){
       item.stock = 0;
       cart = cart.filter(c => c.itemId !== item.id);
 
-      // A Menu Plan food's stock is servings − served, and the next sync
-      // pass rewrites stock from that — so lower Target Servings by the
-      // same amount (same reasoning as the Stock Out modal), otherwise
-      // the food would just reappear on the next render.
+      // The next sync pass recomputes a Menu Plan item's stock from its
+      // food (see cosRemainingStock in 21-cos.js), so the food itself has
+      // to be told it's done — otherwise it just reappears on the next
+      // render, target-less foods especially (their stock is the
+      // unlimited sentinel until soldOut says otherwise).
       if(item.sourcePlanId != null && item.sourceFoodId != null){
         const plan = cosPlans().find(p => p.id === item.sourcePlanId);
         const food = plan && (plan.foods||[]).find(f => f.id === item.sourceFoodId);
         if(food){
-          food.servings = Math.max(0, (Number(food.servings)||0) - qty);
+          food.soldOut = true;
           scheduleCosFoodSync(food);
         }
       }
       saveState();
       renderAll();
       toast(`${displayName(item)} removed — ${peso(qty*item.cost)} logged as waste`);
+    });
+}
+
+/* The 🔴 button on a Menu-Plan-linked tile is the everyday counterpart to
+   🗑: the food simply ran out — nothing spoiled, nothing to log as a
+   loss. Setting soldOut is what actually takes it off POS (see
+   cosRemainingStock in 21-cos.js) and finalizes its reporting numbers
+   (foodTotals treats a sold-out food's served count as its true total —
+   see that function's own comment). Un-doable from the Menu Plan card's
+   Sold Out banner if tapped by mistake. */
+function confirmSoldOut(item){
+  if(item.sourcePlanId == null || item.sourceFoodId == null) return;
+  const plan = cosPlans().find(p => p.id === item.sourcePlanId);
+  const food = plan && (plan.foods||[]).find(f => f.id === item.sourceFoodId);
+  if(!food) return toast('Could not find that food in the Menu Plan', true);
+  const served = Number(food.served) || 0;
+  confirmAction('Mark Sold Out',
+    `<div class="hint">Mark <strong style="color:var(--text)">${escapeHtml(displayName(item))}</strong> as sold out?
+       It comes off Point of Sale right away. No loss is logged —
+       ${served} serving${served===1?'':'s'} sold today will be recorded as this food's full run.</div>`,
+    'Mark Sold Out',
+    async ()=>{
+      try{
+        await dbUpdateItemStock(item.id, 0);
+      }catch(err){
+        toast(err.message || 'Could not update that item', true);
+        return;
+      }
+      item.stock = 0;
+      cart = cart.filter(c => c.itemId !== item.id);
+      food.soldOut = true;
+      scheduleCosFoodSync(food);
+      saveState();
+      renderAll();
+      toast(`${displayName(item)} marked Sold Out`);
     });
 }
 
@@ -357,6 +394,12 @@ document.getElementById('posGrid').addEventListener('click', e=>{
   if(wasteBtn){
     const item = byId(Number(wasteBtn.dataset.waste));
     if(item) confirmWasteAll(item);
+    return;
+  }
+  const soldOutBtn = e.target.closest('[data-soldout]');
+  if(soldOutBtn){
+    const item = byId(Number(soldOutBtn.dataset.soldout));
+    if(item) confirmSoldOut(item);
     return;
   }
 

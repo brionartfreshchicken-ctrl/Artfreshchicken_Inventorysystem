@@ -57,9 +57,12 @@ document.getElementById('app').addEventListener('click', e=>{
   const item = byId(id);
   if(!item) return;
   const act = btn.dataset.act;
-  // Staff can move stock; changing the catalogue is Admin-only
-  if(!isAdmin() && ['edit','del','size'].includes(act))
-    return toast('Only an Admin can add, edit, or delete items', true);
+  // Manual stock adjustment and catalogue changes are both Admin-only —
+  // Staff still move stock plenty (Point of Sale checkout, Menu Plan
+  // ingredient deduction, the POS Waste/Sold Out buttons), just never
+  // through this direct "type in a new number" path.
+  if(!isAdmin() && ['edit','del','size','in','out'].includes(act))
+    return toast('Only an Admin can adjust stock here — sell it through Point of Sale, or use Waste/Sold Out on the POS tile.', true);
   if(act==='edit') openItemModal('edit', item.category, item);
   if(act==='del') confirmDelete(item);
   if(act==='in') openQtyModal(item, 'in');

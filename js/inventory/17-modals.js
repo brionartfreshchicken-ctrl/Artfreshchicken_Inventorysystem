@@ -540,8 +540,19 @@ function openQtyModal(item, direction, allowPickItem, categoryForPick, defaultRe
       const linkedPlan = cosPlans().find(p => p.id === target.sourcePlanId);
       const linkedFood = linkedPlan && (linkedPlan.foods||[]).find(f => f.id === target.sourceFoodId);
       if(linkedFood){
-        const delta = direction==='in' ? qty : -qty;
-        linkedFood.servings = Math.max(0, (Number(linkedFood.servings)||0) + delta);
+        if(Number(linkedFood.servings) > 0){
+          // Has an explicit target (a plan saved before Sold Out existed) —
+          // keep it in step the same way as before.
+          const delta = direction==='in' ? qty : -qty;
+          linkedFood.servings = Math.max(0, (Number(linkedFood.servings)||0) + delta);
+        }else if(direction==='out' && newStock<=0){
+          // No target set (the normal case now) — Stock Out taking it all
+          // the way to 0 is the same "done selling" signal as POS's Sold
+          // Out button; a partial Stock Out/In on a target-less food isn't
+          // meaningful here and is left to POS's own Sold Out control.
+          linkedFood.soldOut = true;
+          scheduleCosFoodSync(linkedFood);
+        }
       }
     }
 
@@ -649,7 +660,14 @@ function confirmDelete(item){
 
 document.getElementById('btnAddInventory').addEventListener('click', ()=>openItemModal('add','any'));
 
-document.getElementById('btnProduceBatch').addEventListener('click', ()=>openQtyModal(state.items.find(i=>i.category==='food'), 'in', true, 'food'));
+document.getElementById('btnProduceBatch').addEventListener('click', ()=>{
+  // This shortcut opens the same manual Stock In modal as a row's own
+  // + Stock In button — same Admin-only rule (see 22-boot.js). Staff
+  // record real production through the Production page instead, which
+  // goes through complete_production() properly.
+  if(!isAdmin()) return toast('Only an Admin can adjust stock here — record it on the Production page instead.', true);
+  openQtyModal(state.items.find(i=>i.category==='food'), 'in', true, 'food');
+});
 
 /* ---------- Settings ---------- */
 

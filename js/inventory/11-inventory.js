@@ -47,12 +47,21 @@ function reverseMovementStock(a){
 
   if(a.type === 'in'){
     item.stock = Math.max(0, item.stock - a.qty);
-    if(linkedFood) linkedFood.servings = Math.max(0, (Number(linkedFood.servings)||0) - a.qty);
+    if(linkedFood && Number(linkedFood.servings) > 0){
+      linkedFood.servings = Math.max(0, (Number(linkedFood.servings)||0) - a.qty);
+    }
   }else{
     item.stock += a.qty;
     if(linkedFood){
-      if(a.reason === 'sold') linkedFood.served = Math.max(0, (Number(linkedFood.served)||0) - a.qty);
-      else linkedFood.servings = Math.max(0, (Number(linkedFood.servings)||0) + a.qty);
+      if(a.reason === 'sold'){
+        linkedFood.served = Math.max(0, (Number(linkedFood.served)||0) - a.qty);
+      }else if(Number(linkedFood.servings) > 0){
+        linkedFood.servings = Math.max(0, (Number(linkedFood.servings)||0) + a.qty);
+      }else if(linkedFood.soldOut){
+        // The forward action was a Stock Out that finished off a
+        // target-less food (see openQtyModal) — undo it the same way.
+        linkedFood.soldOut = false;
+      }
     }
   }
 }
