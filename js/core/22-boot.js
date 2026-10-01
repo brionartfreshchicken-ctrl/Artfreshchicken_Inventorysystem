@@ -107,6 +107,15 @@ async function init(){
 
   tickClock();
   document.getElementById('loading').style.display = 'none';
+
+  // A session can now survive a refresh (sessionStorage — see
+  // 00-supabase.js), so check for one before defaulting to the login
+  // screen; closing the tab/browser still clears it, same as before.
+  const { data: { session } } = await sb.auth.getSession();
+  if(session){
+    const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
+    if(profile){ await enterApp(profile); return; }
+  }
   // The app stays hidden until someone signs in
   await showAuthScreen();
 }
