@@ -207,7 +207,7 @@ function openItemModal(mode, presetCategory, item){
     <div class="field-row" style="margin-top:12px;">
       <div class="field"><label>Estimated Conversion Unit <span class="muted">(optional)</span></label>
         <input id="f-conv-unit" placeholder="e.g. pcs" value="${item&&item.conv?escapeHtml(item.conv.unit):''}"/></div>
-      <div class="field"><label>Pieces per 1 ${escapeHtml(cat==='ingredient'?'unit':'unit')}</label>
+      <div class="field"><label id="lbl-conv-qty">Pieces per 1 unit</label>
         <input id="f-conv-qty" type="number" min="0" step="any" placeholder="e.g. 8" value="${item&&item.conv?item.conv.qty:''}"/></div>
     </div>
     <div class="hint" id="conv-hint" style="margin-top:-4px;">
@@ -232,6 +232,7 @@ function openItemModal(mode, presetCategory, item){
       uSel.innerHTML = unitOptions(v, (UNIT_CHOICES[v]||[])[0]);
       toggleOtherUnit();
       updatePreview();
+      updateConvLabel();
     });
   }
 
@@ -276,6 +277,24 @@ function openItemModal(mode, presetCategory, item){
     const sel = document.getElementById('f-unit');
     return (sel.value === '__other' ? document.getElementById('f-unit-other').value.trim() : sel.value) || 'unit';
   }
+
+  /* Was a dead "cat==='ingredient'?'unit':'unit'" — both branches gave the
+     literal word "unit" no matter what was actually picked, so this never
+     said "bottle," "kg," or anything else real. Now reads both sides of
+     the conversion live: the free-text unit typed on the left (defaulting
+     to "pieces" to match that field's own placeholder), and the item's
+     actual stocking unit from the dropdown/Other box on the right. */
+  function updateConvLabel(){
+    const lbl = document.getElementById('lbl-conv-qty');
+    if(!lbl) return;
+    const convUnitVal = document.getElementById('f-conv-unit').value.trim() || 'pieces';
+    lbl.textContent = `${convUnitVal} per 1 ${currentUnitLabel()}`;
+  }
+  document.getElementById('f-conv-unit').addEventListener('input', updateConvLabel);
+  document.getElementById('f-unit').addEventListener('change', updateConvLabel);
+  const unitOtherEl = document.getElementById('f-unit-other');
+  if(unitOtherEl) unitOtherEl.addEventListener('input', updateConvLabel);
+  updateConvLabel();
   const costCalcBox = document.getElementById('f-cost-calc-box');
   document.getElementById('f-cost-calc-toggle').addEventListener('click', ()=>{
     const showing = costCalcBox.style.display !== 'none';

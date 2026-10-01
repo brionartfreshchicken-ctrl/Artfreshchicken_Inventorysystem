@@ -601,7 +601,8 @@ function cosLineToRow(l, foodId){
     qty_num: (l.qtyNum === '' || l.qtyNum == null) ? null : Number(l.qtyNum),
     qty_unit: l.qtyUnit || null,
     price_num: (l.priceNum === '' || l.priceNum == null) ? null : Number(l.priceNum),
-    price_mode: l.priceMode || 'unit', total_cost: l.total ?? 0, manual: !!l.manual
+    price_mode: l.priceMode || 'unit',
+    total_cost: (l.total === '' || l.total == null) ? 0 : Number(l.total), manual: !!l.manual
   };
 }
 

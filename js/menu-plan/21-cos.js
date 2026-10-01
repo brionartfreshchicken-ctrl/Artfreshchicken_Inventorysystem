@@ -601,9 +601,17 @@ function refreshCosNumbers(){
 
 // Food name, servings, price + every ingredient field
 
-// select elements fire change, inputs fire input — listen for both
+// select elements fire change, inputs fire input — listen for both.
+// Modern browsers now fire BOTH 'input' and 'change' for a <select> (text
+// <input>s still only fire 'input' live, 'change' on blur) — so without
+// this guard, every dropdown pick ran this whole handler twice with the
+// identical value, which was harmless while every effect was idempotent
+// but became visibly wrong once a <select> branch started doing
+// something non-idempotent (a toast, most noticeably — see the qtyUnit
+// mismatch warning below, which used to fire twice per pick).
 ['input','change'].forEach(ev =>
 document.getElementById('cos-foods').addEventListener(ev, e=>{
+  if(e.target.tagName === 'SELECT' && ev === 'input') return;
   const preset = e.target.closest('[data-cl-preset]');
   if(preset){
     if(!preset.value) return;   // the "¼▾" placeholder itself does nothing
@@ -671,6 +679,28 @@ document.getElementById('cos-foods').addEventListener(ev, e=>{
           syncUnitText(line);
           const priceBox = document.querySelector(`[data-cl="priceNum"][data-fid="${f.id}"][data-id="${line.id}"]`);
           if(priceBox) priceBox.value = line.priceNum;
+        }else{
+          // No way to convert known.unit -> line.qtyUnit (no built-in
+          // mass/volume relationship, and no Estimated Conversion set on
+          // the item) — the price above was NEVER re-derived for this
+          // unit, so leaving it displayed next to "per [new unit]" is
+          // exactly the "same number, silently wrong unit" bug this whole
+          // block exists to prevent. Bouncing the UNIT back instead would
+          // be worse — the quantity you just typed (e.g. 10) would keep
+          // its value but silently change meaning (10 ml becomes 10
+          // bottle). So: keep the unit you chose, blank the price instead
+          // of guessing, and say why — same "refuse rather than guess
+          // wrong" rule planDeduction() already applies when it can't
+          // convert either.
+          line.priceNum = '';
+          line.manual = false;
+          line.total = '';
+          syncUnitText(line);
+          const priceBox = document.querySelector(`[data-cl="priceNum"][data-fid="${f.id}"][data-id="${line.id}"]`);
+          if(priceBox) priceBox.value = '';
+          const totalBox = document.querySelector(`[data-cl="total"][data-fid="${f.id}"][data-id="${line.id}"]`);
+          if(totalBox) totalBox.value = '';
+          toast(`${known.name} is stocked in ${known.unit} — set an Estimated Conversion on it in Products before pricing this line in ${line.qtyUnit}`, true);
         }
       }
     }
