@@ -223,7 +223,7 @@ function lineFormulaCaption(l){
    clear stock won't be deducted for it. */
 function ingredientNameHint(name){
   if(!name) return '';
-  const known = state.items.some(i=>i.category==='ingredient' && i.name.toLowerCase()===String(name).trim().toLowerCase());
+  const known = state.items.some(i=>i.category==='ingredient' && i.name.trim().toLowerCase()===String(name).trim().toLowerCase());
   return known ? '' : "Not a Products item — won't deduct";
 }
 
@@ -671,7 +671,7 @@ document.getElementById('cos-foods').addEventListener(ev, e=>{
         modeSel.title = `Is that the price for one ${line.qtyUnit||'pcs'}, or for all of it?`;
       }
       const known = state.items.find(i =>
-        i.category === 'ingredient' && i.name.toLowerCase() === String(line.name||'').trim().toLowerCase());
+        i.category === 'ingredient' && i.name.trim().toLowerCase() === String(line.name||'').trim().toLowerCase());
       if(known && !priceIsTotal(line)){
         const factor = convertQtyForItem(1, line.qtyUnit, known);
         if(factor !== null){
@@ -717,7 +717,7 @@ document.getElementById('cos-foods').addEventListener(ev, e=>{
     const nameChanged = String(previousName||'').trim().toLowerCase() !== cl.value.trim().toLowerCase();
     if(field === 'name' && nameChanged){
       const known = state.items.find(i =>
-        i.category === 'ingredient' && i.name.toLowerCase() === cl.value.trim().toLowerCase());
+        i.category === 'ingredient' && i.name.trim().toLowerCase() === cl.value.trim().toLowerCase());
       if(known){
         if(line.priceNum === '' || line.priceNum == null){
           line.priceNum = known.cost;       // your stocked cost is per unit
@@ -1332,7 +1332,7 @@ document.getElementById('btnCosExport').addEventListener('click', ()=>{
 function ingredientByName(name){
   const n = String(name||'').trim().toLowerCase();
   if(!n) return null;
-  return state.items.find(i => i.category === 'ingredient' && i.name.toLowerCase() === n) || null;
+  return state.items.find(i => i.category === 'ingredient' && i.name.trim().toLowerCase() === n) || null;
 }
 
 /* Works out what would happen, without changing anything. */

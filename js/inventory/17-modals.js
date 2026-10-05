@@ -422,7 +422,7 @@ function openItemModal(mode, presetCategory, item){
        is legitimate when the same item is stocked at two different prices,
        so warn instead of blocking. */
     const clash = state.items.find(x =>
-      x.name.toLowerCase() === name.toLowerCase() &&
+      x.name.trim().toLowerCase() === name.toLowerCase() &&
       (x.size||'').toLowerCase() === size.toLowerCase() &&
       (!isEdit || x.id !== item.id));
 
