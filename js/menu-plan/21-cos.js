@@ -220,11 +220,16 @@ function lineFormulaCaption(l){
 
 /* Old data, or the matching product was renamed/deleted — the name stays
    exactly as typed (nothing silently disappears), just flagged so it's
-   clear stock won't be deducted for it. */
+   clear stock won't be deducted for it. Also flags a tracked ingredient
+   that's already at 0 — still lets you add the line (the actual qty vs.
+   stock check happens at Save, same as always), just warns up front
+   instead of only after you've filled in the whole row. */
 function ingredientNameHint(name){
   if(!name) return '';
-  const known = state.items.some(i=>i.category==='ingredient' && i.name.trim().toLowerCase()===String(name).trim().toLowerCase());
-  return known ? '' : "Not a Products item — won't deduct";
+  const known = state.items.find(i=>i.category==='ingredient' && i.name.trim().toLowerCase()===String(name).trim().toLowerCase());
+  if(!known) return "Not a Products item — won't deduct";
+  if(known.stock <= 0) return "Out of stock";
+  return '';
 }
 
 function syncUnitText(line){
@@ -484,7 +489,7 @@ function renderCos(){
             </td>
             <td><div class="qty-cell">
               <input class="cos-line-input num" data-cl="qtyNum" data-fid="${f.id}" data-id="${l.id}"
-                     type="text" inputmode="decimal" value="${l.qtyNum ?? ''}" placeholder="0, 1/2, 1 1/2…"
+                     type="text" inputmode="decimal" value="${Number.isFinite(l.qtyNum)?l.qtyNum:''}" placeholder="0, 1/2, 1 1/2…"
                      title="Fractions work too — 1/2, 3/4, 1 1/2"/>
               <select class="cos-line-unit" data-cl-preset="${l.id}" data-fid="${f.id}"
                       title="Quick pick a common quantity" style="max-width:60px;">${qtyPresetOptionsHtml()}</select>
