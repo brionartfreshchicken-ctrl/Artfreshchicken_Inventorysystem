@@ -8,7 +8,7 @@ function navigate(view){
   if(!currentUser) return;                       // no session, no pages
   /* Hiding the link is not enough — block the route too. */
   const ADMIN_ONLY  = ['settings','reports','history','purchases','suppliers','stockmovements','expenses'];
-  const STAFF_ONLY  = ['sales','cos','recipes','production'];
+  const STAFF_ONLY  = ['sales','cos','recipes','production','stafftime','lpg'];
   if(ADMIN_ONLY.includes(view) && !isAdmin()){
     toast('That page is for Admins only', true);
     view = 'sales';                                // staff land where they work
@@ -141,6 +141,7 @@ function renderAll(){
   renderOthers();
   renderProfitability();
   renderStaffTime();
+  renderLpgPage();
 }
 
 /* ============================= FILTER EVENTS ============================= */

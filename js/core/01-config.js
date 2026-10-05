@@ -59,7 +59,8 @@ const pageMeta = {
   recipes:    {ic:'📖', title:'Recipes',          sub:'Reusable recipes — ingredients, cost per serving, selling price and margin'},
   production: {ic:'🏭', title:'Production',       sub:'Cook a recipe, deduct ingredients, and stock the finished item'},
   stafftime:  {ic:'🕒', title:'Staff',            sub:'Time in / time out — recorded by the system, not editable'},
-  expenses:   {ic:'🧯', title:'Operating Expenses', sub:'Every expense the business logs, plus Staff Directory and LPG usage'},
+  lpg:        {ic:'🔥', title:'LPG Usage',        sub:'When each tank started and ran out — anyone can log a new one, only an Admin can edit'},
+  expenses:   {ic:'🧯', title:'Operating Expenses', sub:'Every expense the business logs, plus the Staff Time Log'},
   reports:    {ic:'📊', title:'Reports',          sub:'Profit & Loss, best sellers and waste'},
   settings:   {ic:'⚙',  title:'Settings',         sub:'Accounts and access'},
 };

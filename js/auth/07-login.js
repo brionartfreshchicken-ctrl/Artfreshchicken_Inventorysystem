@@ -55,8 +55,9 @@ async function enterApp(profile, isFreshLogin){
 
   // The app itself stays hidden behind this — see promptTimeIn() in
   // 23-staff-timeclock.js — until Time In is confirmed (or fails and
-  // lets them through anyway rather than locking out the till).
-  if(isFreshLogin && profile.role === 'staff'){
+  // lets them through anyway rather than locking out the till). Only
+  // once per calendar day — see hasTimedInToday()'s own comment for why.
+  if(isFreshLogin && profile.role === 'staff' && !hasTimedInToday(profile.id)){
     await promptTimeIn(profile);
   }
 

@@ -215,6 +215,11 @@ a{color:var(--teal);text-decoration:none;}
 .btn.ghost:hover{background:var(--panel3);color:var(--text);}
 .btn.danger{background:var(--panel);border-color:#fecaca;color:var(--red);}
 .btn.danger:hover{background:var(--red-bg);}
+/* Solid red, same weight as .btn.primary — Time Out is an "ending"
+   action and reads better bold than as the same subtle outline style
+   Delete buttons use (.btn.danger). */
+.btn-timeout{background:var(--red);border-color:var(--red);color:#fff;}
+.btn-timeout:hover{background:#b91c1c;border-color:#b91c1c;}
 .btn.outline-teal{background:var(--panel);border-color:var(--teal);color:var(--teal);}
 .btn.outline-teal:hover{background:var(--teal-tint);}
 .btn.small{font-size:12px;padding:6px 11px;border-radius:8px;}

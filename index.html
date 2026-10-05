@@ -121,7 +121,8 @@
       <li class="nav-item" data-staffonly="1" data-view="cos"><span class="ic">🍽</span>Menu Plan<span class="cursor"></span></li>
       <li class="nav-item" data-staffonly="1" data-view="recipes"><span class="ic">📖</span>Recipes<span class="cursor"></span></li>
       <li class="nav-item" data-staffonly="1" data-view="production"><span class="ic">🏭</span>Production<span class="cursor"></span></li>
-      <li class="nav-item" data-view="stafftime"><span class="ic">🕒</span>Staff<span class="cursor"></span></li>
+      <li class="nav-item" data-staffonly="1" data-view="stafftime"><span class="ic">🕒</span>Staff<span class="cursor"></span></li>
+      <li class="nav-item" data-staffonly="1" data-view="lpg"><span class="ic">🔥</span>LPG Usage<span class="cursor"></span></li>
 
       <li class="nav-section" data-admin="1">Expenses</li>
       <li class="nav-item" data-admin="1" data-view="expenses"><span class="ic">🧯</span>Operating Expenses<span class="cursor"></span></li>
@@ -618,16 +619,44 @@
       <div class="card" id="stt-status-card">
         <div class="card-body">
           <div class="hint" id="stt-status" style="font-size:14px;"></div>
-          <button class="btn primary" id="btnTimeOut" style="margin-top:12px;display:none;">Time Out</button>
+          <button class="btn btn-timeout" id="btnTimeOut" style="margin-top:12px;display:none;">Time Out</button>
         </div>
       </div>
 
       <div class="card">
         <div class="card-head"><div class="ct">Time Log</div><div class="hint" id="stt-histcount"></div></div>
+        <div class="card-body" style="padding:12px 16px;">
+          <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;">
+            <span class="hint">From</span>
+            <input type="date" id="stt-from" style="width:auto;"/>
+            <span class="hint">To</span>
+            <input type="date" id="stt-to" style="width:auto;"/>
+            <button class="btn ghost small" id="btnSttReset">Today</button>
+          </div>
+        </div>
         <div class="card-body" style="padding:0;max-height:480px;overflow-y:auto;">
           <table><thead><tr>
-            <th data-admin="1">Staff</th><th>Date</th><th>Time In</th><th>Time Out</th><th>Duration</th>
+            <th data-admin="1">Staff</th><th>Date</th><th class="num">Shifts</th><th class="num">Total Time</th><th></th>
           </tr></thead><tbody id="tbl-stafftime"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- LPG USAGE -->
+    <section class="view" id="view-lpg">
+      <div class="card">
+        <div class="card-head"><div class="ct">LPG Usage</div>
+          <div class="hint">One row per tank — when it started, when it ran out, what it cost</div>
+          <button class="btn small primary" id="btnAddLpg" style="margin-left:auto;">+ Add Record</button>
+        </div>
+        <div class="card-body">
+          <div class="hint" id="lpg-status" style="font-size:14px;"></div>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <table><thead><tr>
+            <th>Date Start</th><th>Date End</th><th class="num">Days Used</th>
+            <th class="num">Price</th><th class="num">Cost / Day</th>
+          </tr></thead><tbody id="tbl-lpg"></tbody><tfoot id="foot-lpg"></tfoot></table>
         </div>
       </div>
     </section>
@@ -659,27 +688,38 @@
       </div>
 
       <div class="card">
-        <div class="card-head"><div class="ct">Staff Directory</div>
-          <div class="hint">Name, position and wage on file — feeds Man Power on Reports</div>
-          <button class="btn small primary" id="btnAddStaff" style="margin-left:auto;">+ Add Staff</button>
+        <div class="card-head"><div class="ct">Staff Time Log</div>
+          <div class="hint">Time in/out for every staff account — recorded by the system, included in Download Report</div>
         </div>
-        <div class="card-body" style="padding:0;">
+        <div class="card-body" style="padding:12px 16px;">
+          <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;">
+            <span class="hint">From</span>
+            <input type="date" id="otl-from" style="width:auto;"/>
+            <span class="hint">To</span>
+            <input type="date" id="otl-to" style="width:auto;"/>
+            <button class="btn ghost small" id="btnOtlReset">Today</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0;max-height:420px;overflow-y:auto;">
           <table><thead><tr>
-            <th>Name</th><th>Position</th><th class="num">Wage</th><th class="num">Monthly Cost</th><th></th>
-          </tr></thead><tbody id="tbl-staff"></tbody><tfoot id="foot-staff"></tfoot></table>
+            <th>Staff</th><th>Date</th><th class="num">Shifts</th><th class="num">Total Time</th><th></th>
+          </tr></thead><tbody id="tbl-staff-timelog"></tbody></table>
         </div>
       </div>
 
       <div class="card">
         <div class="card-head"><div class="ct">LPG Usage</div>
           <div class="hint">One row per tank — when it started, when it ran out, what it cost</div>
-          <button class="btn small primary" id="btnAddLpg" style="margin-left:auto;">+ Add Record</button>
+          <button class="btn small primary" id="btnAddLpgAdmin" style="margin-left:auto;">+ Add Record</button>
+        </div>
+        <div class="card-body">
+          <div class="hint" id="lpg-status-admin" style="font-size:14px;"></div>
         </div>
         <div class="card-body" style="padding:0;">
           <table><thead><tr>
             <th>Date Start</th><th>Date End</th><th class="num">Days Used</th>
             <th class="num">Price</th><th class="num">Cost / Day</th><th></th>
-          </tr></thead><tbody id="tbl-lpg"></tbody><tfoot id="foot-lpg"></tfoot></table>
+          </tr></thead><tbody id="tbl-lpg-admin"></tbody><tfoot id="foot-lpg-admin"></tfoot></table>
         </div>
       </div>
     </section>
@@ -695,22 +735,9 @@
           <div class="stat-grid" id="statGridProfitTotal"></div>
           <div class="hint" style="margin-top:12px;line-height:1.6;">
             Net Profit = Gross Profit − every expense logged on the Operating Expenses page.
-            If staff wages should count toward it, log them there too as a "Salaries" expense —
-            the wage field on the Staff Directory only feeds the separate Man Power card below,
-            it is not automatically included here. Waste is shown separately and is
+            If staff wages should count toward it, log them there too as a "Salaries" expense.
+            Waste is shown separately and is
             <strong>not</strong> subtracted from either profit figure.
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head"><div class="ct">Man Power</div>
-          <div class="hint">Labor cost, and what Gross Profit looks like after paying it</div>
-        </div>
-        <div class="card-body">
-          <div class="stat-grid" id="statGridManpower"></div>
-          <div class="hint" style="margin-top:12px;">
-            This only accounts for labor — not rent, utilities or other operating expenses.
           </div>
         </div>
       </div>
@@ -853,9 +880,8 @@
             Waste &amp; Losses, the full Movement Log, current Inventory, the Restock
             List, Suppliers, <strong>Purchases</strong> (every purchase, one row per line
             item), <strong>Recipes</strong>, <strong>Production</strong> (every batch, one row per
-            ingredient used), <strong>Operating Expenses</strong>, Staff Directory,
-            <strong>Man Power</strong> (labor cost, Gross Profit after paying it, and real
-            Net Profit after Operating Expenses), LPG Usage, Product / Food Costing
+            ingredient used), <strong>Operating Expenses</strong>, <strong>Staff Time Log</strong>
+            (time in/out, recorded by the system), LPG Usage, Product / Food Costing
             Profitability, and <strong>Food Costing Detail</strong> (every ingredient in every
             food, not summed into a total). Account passwords are never included.
           </div>

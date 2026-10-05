@@ -758,64 +758,39 @@ function renderRetention(){
     : 'Never cleared automatically';
 }
 
-/* ============================= OTHERS (Staff Directory + LPG Usage) =============================
-   A shared page — both Admin and Staff see and can edit it. Two plain
-   lists with no knock-on effects elsewhere: staff here are names on a
-   roster, not login accounts, and LPG cost has no link to any other
-   report — it is just kept somewhere sensible. */
-
-/* Daily wages are normalized to a monthly figure (26 working days is the
-   common assumption for PH small businesses) so Staff Directory and Man
-   Power can show one comparable "monthly cost" number regardless of how
-   each person is actually paid. Returns null if no wage is on file. */
-function monthlyWage(s){
-  if(s.wage == null || isNaN(s.wage)) return null;
-  if(s.wagePeriod === 'month') return s.wage;
-  const now = new Date();
-  const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const dates = Array.isArray(s.workDates) ? s.workDates : [];
-  const count = dates.filter(d => d.startsWith(ym)).length;
-  return s.wage * count;
-}
+/* ============================= OTHERS (Staff Time Log + LPG Usage) =============================
+   A shared page — both Admin and Staff see it. The time log is
+   read-only here (see 23-staff-timeclock.js — it's only ever written by
+   the two SECURITY DEFINER functions, never edited directly); LPG cost
+   has no link to any other report — it is just kept somewhere sensible. */
 
 function renderOthers(){
-  const staffBody = document.getElementById('tbl-staff');
-  if(!staffBody) return;   // guard for any build that drops this page
+  const timeLogBody = document.getElementById('tbl-staff-timelog');
+  if(!timeLogBody) return;   // guard for any build that drops this page
 
-  const staff = state.staffList || [];
-  staffBody.innerHTML = staff.length
-    ? staff.map(s=>{
-        const mw = monthlyWage(s);
-        const now = new Date();
-        const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-        const daysThisMonth = (s.workDates||[]).filter(d=>d.startsWith(ym)).length;
-        const schedNote = (s.wage!=null && s.wagePeriod!=='month')
-          ? `<div class="muted" style="font-size:11px;margin-top:2px;">${daysThisMonth} day${daysThisMonth===1?'':'s'} marked this month</div>`
-          : '';
-        return `<tr>
-        <td>${escapeHtml(s.name)}</td>
-        <td>${s.position ? escapeHtml(s.position) : '<span class="muted">—</span>'}</td>
-        <td class="num">${s.wage!=null ? peso(s.wage)+' / '+(s.wagePeriod==='month'?'mo':'day') : '<span class="muted">—</span>'}</td>
-        <td class="num">${mw!=null ? peso(mw) : '<span class="muted">—</span>'}${schedNote}</td>
-        <td class="num" style="white-space:nowrap;">
-          <button class="btn small ghost" data-staff-edit="${s.id}" title="Edit ${escapeHtml(s.name)}">✎ Edit</button>
-          <button class="btn small danger" data-staff-del="${s.id}" title="Remove ${escapeHtml(s.name)}">× Delete</button>
-        </td>
-      </tr>`;
-      }).join('')
-    : `<tr class="empty-row"><td colspan="5">No staff on file yet.</td></tr>`;
+  const {from, to} = timeLogDateRange('otl-from', 'otl-to');
+  const ranged = (state.staffTimeLogs || []).filter(l => l.timeIn >= from && l.timeIn <= to);
+  renderTimeLogTable('tbl-staff-timelog', ranged, { adminOnlyStaffCol: false });
 
-  const staffFoot = document.getElementById('foot-staff');
-  if(staffFoot){
-    const totalMonthly = staff.reduce((t,s)=>t+(monthlyWage(s)||0),0);
-    staffFoot.innerHTML = staff.length
-      ? `<tr class="total-row"><td colspan="3">TOTAL — ${staff.length} staff</td>
-           <td class="num strong">${peso(totalMonthly)}</td><td></td></tr>`
-      : '';
-  }
+}
 
-  const lpgBody = document.getElementById('tbl-lpg');
-  const lpgFoot = document.getElementById('foot-lpg');
+/* LPG Usage shows up in two different places, by role — shown, not
+   just permission-gated, since Admin and Staff genuinely want
+   different things from the same data. Staff are the ones actually in
+   the cafeteria, first to notice a tank running low, so their own nav
+   page (Staff-only — see STAFF_ONLY in 10-nav-dashboard.js) lets them
+   add a new record (lpg_logs_insert RLS now allows any signed-in
+   account — see 0030_lpg_logs_staff_insert.sql) but never edit or
+   delete one. Admin reviews/manages the full history from Operating
+   Expenses instead, with the usual Edit/Delete — that stays Admin-only
+   both by which page can reach it and at the database level
+   (lpg_logs_update/delete RLS, unchanged). Both instances read the
+   same state.lpgLogs; renderLpgPage() just draws it twice. */
+function renderLpgInto(ids, showActions){
+  const lpgBody = document.getElementById(ids.body);
+  if(!lpgBody) return;
+  const statusEl = document.getElementById(ids.status);
+  const lpgFoot = document.getElementById(ids.foot);
   const logs = (state.lpgLogs || []).slice()
     .sort((a,b)=> String(b.dateStart||'').localeCompare(String(a.dateStart||'')));
 
@@ -827,24 +802,37 @@ function renderOthers(){
   };
   const fmtDate = s => s ? new Date(s+'T00:00:00').toLocaleDateString() : '';
 
+  if(statusEl){
+    const current = logs.find(l => l.dateStart && !l.dateEnd);
+    statusEl.innerHTML = current
+      ? (()=>{
+          const daysRunning = Math.round((Date.now() - new Date(current.dateStart+'T00:00:00')) / DAY_MS);
+          return `🔥 Current tank started <strong style="color:var(--text);">${fmtDate(current.dateStart)}</strong> — <strong style="color:var(--text);">${daysRunning} day${daysRunning===1?'':'s'}</strong> in use so far`;
+        })()
+      : `<span class="muted">No tank currently marked as in use.</span>`;
+  }
+
+  const colspan = showActions ? 6 : 5;
   lpgBody.innerHTML = logs.length
     ? logs.map(l=>{
         const d = daysUsed(l);
         const perDay = (d && d > 0 && l.price != null) ? l.price / d : null;
+        const actionsCell = showActions ? `
+          <td class="num" style="white-space:nowrap;">
+            <button class="btn small ghost" data-lpg-edit="${l.id}" title="Edit this record">✎ Edit</button>
+            <button class="btn small danger" data-lpg-del="${l.id}" title="Delete this record">× Delete</button>
+          </td>` : '';
         return `<tr>
           <td>${fmtDate(l.dateStart) || '<span class="muted">—</span>'}</td>
           <td>${l.dateEnd ? fmtDate(l.dateEnd) : '<span class="muted">still in use</span>'}</td>
           <td class="num">${d != null ? d + ' day' + (d===1?'':'s') : '<span class="muted">—</span>'}</td>
           <td class="num">${l.price != null ? peso(l.price) : '<span class="muted">—</span>'}</td>
-          <td class="num">${perDay != null ? peso(perDay) : '<span class="muted">—</span>'}</td>
-          <td class="num" style="white-space:nowrap;">
-            <button class="btn small ghost" data-lpg-edit="${l.id}" title="Edit this record">✎ Edit</button>
-            <button class="btn small danger" data-lpg-del="${l.id}" title="Delete this record">× Delete</button>
-          </td>
+          <td class="num">${perDay != null ? peso(perDay) : '<span class="muted">—</span>'}</td>${actionsCell}
         </tr>`;
       }).join('')
-    : `<tr class="empty-row"><td colspan="6">No LPG usage recorded yet.</td></tr>`;
+    : `<tr class="empty-row"><td colspan="${colspan}">No LPG usage recorded yet.</td></tr>`;
 
+  if(!lpgFoot) return;
   if(logs.length){
     const total = logs.reduce((t,l)=>t+(l.price||0),0);
     const totalDays = logs.reduce((t,l)=>t+(daysUsed(l)||0),0);
@@ -852,11 +840,15 @@ function renderOthers(){
       <td colspan="2">TOTAL — ${logs.length} tank${logs.length===1?'':'s'}</td>
       <td class="num">${totalDays ? totalDays+' days' : '—'}</td>
       <td class="num strong">${peso(total)}</td>
-      <td class="num">${totalDays>0 ? peso(total/totalDays) : '—'}</td>
-      <td></td></tr>`;
+      <td class="num">${totalDays>0 ? peso(total/totalDays) : '—'}</td>${showActions ? '<td></td>' : ''}</tr>`;
   }else{
     lpgFoot.innerHTML = '';
   }
+}
+
+function renderLpgPage(){
+  renderLpgInto({ status:'lpg-status', body:'tbl-lpg', foot:'foot-lpg' }, false);
+  renderLpgInto({ status:'lpg-status-admin', body:'tbl-lpg-admin', foot:'foot-lpg-admin' }, true);
 }
 
 /* Admin-only: Product Profitability (Snacks/Drinks/Ingredients/Food, all-time
@@ -995,22 +987,6 @@ function renderProfitability(){
                 value:peso(netProfit), note:'Gross Profit minus Operating Expenses'}) +
       statTile({tone: waste>0?'red':'green', ic:'🗑', label:'Waste',
                 value:peso(waste), note:'shown separately, not subtracted above'});
-
-    /* ---- Man Power: labor cost against Gross Profit — a supporting
-       view, not a substitute for the real Net Profit tile above ---- */
-    const mpGrid = document.getElementById('statGridManpower');
-    if(mpGrid){
-      const staff = state.staffList || [];
-      const laborCost = staff.reduce((t,s)=>t+(monthlyWage(s)||0),0);
-      const afterLabor = gross - laborCost;
-      mpGrid.innerHTML =
-        statTile({tone:'blue', ic:'🧑‍🤝‍🧑', label:'Staff Count', value:staff.length,
-                  note:'on the Staff Directory'}) +
-        statTile({tone:'magenta', ic:'💰', label:'Monthly Labor Cost', value:peso(laborCost),
-                  note:'wage × days marked this month, per staff'}) +
-        statTile({tone: afterLabor>=0?'green':'red', ic:'🌿', label:'Gross Profit After Labor',
-                  value:peso(afterLabor), note:"Gross Profit minus labor cost only"});
-    }
   }
 }
 
@@ -1063,20 +1039,7 @@ function buildDetailedPLData(){
   const totExpenses = expRows.reduce((t,[,v])=>t+v,0);
   const netProfit = totGross - totExpenses;
 
-  const now = new Date();
-  const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const staffRows = (state.staffList||[]).map(s=>{
-    const daysThisMonth = (s.workDates||[]).filter(d=>d.startsWith(ym)).length;
-    return {
-      name: s.name, position: s.position||'', wage: s.wage, per: s.wagePeriod,
-      daysThisMonth: s.wagePeriod==='month' ? null : daysThisMonth,
-      monthlyCost: monthlyWage(s)||0
-    };
-  });
-  const totalLabor = staffRows.reduce((t,s)=>t+s.monthlyCost,0);
-  const grossAfterLabor = totGross - totalLabor;
-
-  return {allRows, totRev, totCost, totGross, totWaste, expRows, totExpenses, netProfit, staffRows, totalLabor, grossAfterLabor};
+  return {allRows, totRev, totCost, totGross, totWaste, expRows, totExpenses, netProfit};
 }
 
 function openDetailedPLReport(){
@@ -1112,27 +1075,12 @@ function openDetailedPLReport(){
         : `<tr class="empty-row"><td colspan="2">No expenses logged yet.</td></tr>`}
     </tbody><tfoot><tr class="total-row"><td>TOTAL</td><td class="num strong">${peso(d.totExpenses)}</td></tr></tfoot></table>
 
-    <div class="hint" style="margin:16px 0 8px;font-weight:600;">Man Power</div>
-    <table><thead><tr>
-      <th>Staff</th><th>Position</th><th class="num">Wage</th><th>Per</th>
-      <th class="num">Days This Month</th><th class="num">Monthly Cost</th>
-    </tr></thead><tbody>
-      ${d.staffRows.length ? d.staffRows.map(s=>`<tr>
-        <td>${escapeHtml(s.name)}</td>
-        <td>${s.position?escapeHtml(s.position):'<span class="muted">—</span>'}</td>
-        <td class="num">${s.wage!=null?peso(s.wage):'<span class="muted">—</span>'}</td>
-        <td>${s.per==='month'?'Month':'Day'}</td>
-        <td class="num">${s.daysThisMonth!=null?s.daysThisMonth:'<span class="muted">—</span>'}</td>
-        <td class="num strong">${peso(s.monthlyCost)}</td>
-      </tr>`).join('') : `<tr class="empty-row"><td colspan="6">No staff on file yet.</td></tr>`}
-    </tbody><tfoot><tr class="total-row"><td colspan="5">TOTAL LABOR</td><td class="num strong">${peso(d.totalLabor)}</td></tr></tfoot></table>
-
     <div class="hint" style="margin-top:16px;padding-top:12px;border-top:1px dashed var(--border);line-height:1.8;">
       Revenue <strong>${peso(d.totRev)}</strong> − Cost <strong>${peso(d.totCost)}</strong> =
       Gross Profit <strong>${peso(d.totGross)}</strong><br>
       Gross Profit <strong>${peso(d.totGross)}</strong> − Operating Expenses <strong>${peso(d.totExpenses)}</strong> =
       Net Profit <strong style="color:${d.netProfit>=0?'var(--green)':'var(--red)'}">${peso(d.netProfit)}</strong><br>
-      <span class="muted">(Man Power is informational — Total Labor above only feeds Net Profit if also logged as an Operating Expense.)</span>
+      <span class="muted">If staff wages should count toward Net Profit, log them as a "Salaries" Operating Expense.</span>
     </div>
   `;
   openModal('Detailed Profit & Loss Report', body,
@@ -1156,29 +1104,19 @@ async function downloadDetailedPLReport(){
     ? d.expRows.map(([cat,amt])=>({Category:cat, Amount:round2(amt)}))
     : [{Note:'No expenses logged yet'}];
 
-  const staffSheetD = d.staffRows.length ? d.staffRows.map(s=>({
-    Staff:s.name, Position:s.position, Wage: s.wage!=null?round2(s.wage):'',
-    Per: s.per==='month'?'Month':'Day', 'Days This Month': s.daysThisMonth!=null?s.daysThisMonth:'',
-    'Monthly Cost': round2(s.monthlyCost)
-  })) : [{Note:'No staff on file yet'}];
-
   const summarySheet = [
     {Item:'Revenue', Value: round2(d.totRev)},
     {Item:'Cost (COGS)', Value: round2(d.totCost)},
     {Item:'Gross Profit', Value: round2(d.totGross)},
     {Item:'Operating Expenses', Value: round2(d.totExpenses)},
     {Item:'Net Profit', Value: round2(d.netProfit)},
-    {Item:'Waste (not subtracted above)', Value: round2(d.totWaste)},
-    {Item:'', Value:''},
-    {Item:'Total Labor (Man Power)', Value: round2(d.totalLabor)},
-    {Item:'Gross Profit After Labor', Value: round2(d.grossAfterLabor)}
+    {Item:'Waste (not subtracted above)', Value: round2(d.totWaste)}
   ];
 
   const sheets = {
     'Summary': summarySheet,
     'Item Profitability': itemSheet,
-    'Operating Expenses': expenseSheet,
-    'Man Power': staffSheetD
+    'Operating Expenses': expenseSheet
   };
 
   if(typeof XLSX !== 'undefined'){
@@ -1215,170 +1153,6 @@ async function downloadDetailedPLReport(){
 }
 
 document.getElementById('btnDetailedPL').addEventListener('click', openDetailedPLReport);
-
-/* ---- Staff Directory: add / edit / delete ---- */
-
-/* Small month-view calendar used inside Add/Edit Staff — click a date to
-   mark it as a day this staff member worked. Returns the inner HTML; the
-   caller re-renders this into #staff-cal-box whenever the month changes
-   or a date is toggled. */
-function calendarGridHtml(year, month, selectedDates){
-  const first = new Date(year, month, 1);
-  const startDow = first.getDay();
-  const daysInMonth = new Date(year, month+1, 0).getDate();
-  const monthLabel = first.toLocaleDateString(undefined, {month:'long', year:'numeric'});
-  const todayStr = isoDate(new Date());
-
-  let cells = '';
-  for(let i=0;i<startDow;i++) cells += `<div></div>`;
-  for(let d=1; d<=daysInMonth; d++){
-    const iso = isoDate(new Date(year, month, d));
-    const isSelected = selectedDates.includes(iso);
-    const isToday = iso === todayStr;
-    cells += `<button type="button" class="cal-day${isSelected?' selected':''}${isToday?' today':''}" data-date="${iso}" title="${isSelected?'Worked — click to unmark':'Click to mark as worked'}">${d}</button>`;
-  }
-
-  return `
-    <div class="cal-header">
-      <button type="button" class="btn small ghost" id="cal-prev">‹</button>
-      <div class="cal-month-label">${monthLabel}</div>
-      <button type="button" class="btn small ghost" id="cal-next">›</button>
-    </div>
-    <div class="cal-grid cal-weekdays">${['S','M','T','W','T','F','S'].map(d=>`<div class="cal-wd">${d}</div>`).join('')}</div>
-    <div class="cal-grid">${cells}</div>
-  `;
-}
-
-function openStaffModal(mode, staff){
-  let staffWorkDates = (staff && Array.isArray(staff.workDates)) ? staff.workDates.slice() : [];
-  const today = new Date();
-  let calYear = today.getFullYear();
-  let calMonth = today.getMonth();   // 0-indexed
-
-  const body = `
-    <div class="field"><label>Staff Name</label>
-      <input id="f-staff-name" type="text" placeholder="e.g. Maria Santos" value="${staff?escapeHtml(staff.name):''}"/></div>
-    <div class="field"><label>Position</label>
-      <input id="f-staff-pos" type="text" placeholder="e.g. Cashier, Cook" value="${staff?escapeHtml(staff.position||''):''}"/></div>
-    <div class="field-row">
-      <div class="field"><label>Wage</label>
-        <input id="f-staff-wage" type="number" min="0" step="any" placeholder="0.00" value="${staff&&staff.wage!=null?staff.wage:''}"/></div>
-      <div class="field"><label>Per</label>
-        <select id="f-staff-wage-period">
-          <option value="day"${staff&&staff.wagePeriod==='month'?'':' selected'}>Day</option>
-          <option value="month"${staff&&staff.wagePeriod==='month'?' selected':''}>Month</option>
-        </select></div>
-    </div>
-    <div class="field" id="wrap-workdays">
-      <label>Work Calendar <span class="muted">(click the days this staff member actually worked)</span></label>
-      <div id="staff-cal-box"></div>
-    </div>
-    <div class="hint" id="staff-workdays-hint" style="margin-top:8px;"></div>
-    <div class="hint" style="margin-top:8px;">Monthly Cost on the Staff Directory and Man Power uses days marked in the <strong>current</strong> month. Leave wage blank if you don't want to track it.</div>
-  `;
-  const foot = `<button class="btn ghost" id="staff-cancel">Cancel</button>
-    <button class="btn primary" id="staff-save">${mode==='add'?'Add Staff':'Save Changes'}</button>`;
-  openModal(mode==='add' ? 'Add Staff' : 'Edit Staff', body, foot);
-  document.getElementById('staff-cancel').addEventListener('click', closeModal);
-  document.getElementById('f-staff-name').focus();
-
-  function renderCal(){
-    document.getElementById('staff-cal-box').innerHTML = calendarGridHtml(calYear, calMonth, staffWorkDates);
-    document.getElementById('cal-prev').addEventListener('click', ()=>{
-      calMonth--; if(calMonth<0){ calMonth=11; calYear--; }
-      renderCal();
-    });
-    document.getElementById('cal-next').addEventListener('click', ()=>{
-      calMonth++; if(calMonth>11){ calMonth=0; calYear++; }
-      renderCal();
-    });
-    document.getElementById('staff-cal-box').querySelectorAll('[data-date]').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const iso = btn.dataset.date;
-        if(staffWorkDates.includes(iso)) staffWorkDates = staffWorkDates.filter(d=>d!==iso);
-        else staffWorkDates.push(iso);
-        renderCal();
-        updateWorkdaysHint();
-      });
-    });
-  }
-
-  function updateWorkdaysHint(){
-    const now = new Date();
-    const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-    const thisMonthCount = staffWorkDates.filter(d=>d.startsWith(ym)).length;
-    document.getElementById('staff-workdays-hint').innerHTML =
-      `<span class="calc-caption">🧮 Calculated automatically</span>${thisMonthCount} day${thisMonthCount===1?'':'s'} marked so far this month`;
-  }
-
-  function toggleWorkdaysVisibility(){
-    const isMonth = document.getElementById('f-staff-wage-period').value === 'month';
-    document.getElementById('wrap-workdays').style.display = isMonth ? 'none' : '';
-    document.getElementById('staff-workdays-hint').style.display = isMonth ? 'none' : '';
-  }
-
-  document.getElementById('f-staff-wage-period').addEventListener('change', toggleWorkdaysVisibility);
-  toggleWorkdaysVisibility();
-  renderCal();
-  updateWorkdaysHint();
-
-  document.getElementById('staff-save').addEventListener('click', async ()=>{
-    const name = document.getElementById('f-staff-name').value.trim();
-    const position = document.getElementById('f-staff-pos').value.trim();
-    const wageStr = document.getElementById('f-staff-wage').value;
-    const wage = wageStr === '' ? null : Number(wageStr);
-    const wagePeriod = document.getElementById('f-staff-wage-period').value;
-    const workDates = staffWorkDates.slice().sort();
-    if(!name) return toast('Enter a name', true);
-    const data = { name, position, wage, wagePeriod, workDates };
-    try{
-      if(mode==='add'){
-        const created = await dbInsertStaff(data);
-        state.staffList.push(created);
-        toast('Staff added');
-      }else{
-        const updated = await dbUpdateStaff(staff.id, data);
-        Object.assign(staff, updated);
-        toast('Staff updated');
-      }
-    }catch(err){
-      toast(err.message || 'Could not save that staff record', true);
-      return;
-    }
-    saveState();
-    closeModal();
-    renderOthers();
-  });
-}
-
-document.getElementById('btnAddStaff').addEventListener('click', ()=>openStaffModal('add'));
-
-document.getElementById('tbl-staff').addEventListener('click', e=>{
-  const editBtn = e.target.closest('[data-staff-edit]');
-  if(editBtn){
-    const s = (state.staffList||[]).find(x=>x.id === Number(editBtn.dataset.staffEdit));
-    if(s) openStaffModal('edit', s);
-    return;
-  }
-  const delBtn = e.target.closest('[data-staff-del]');
-  if(delBtn){
-    const s = (state.staffList||[]).find(x=>x.id === Number(delBtn.dataset.staffDel));
-    if(!s) return;
-    confirmAction('Remove staff',
-      `<div class="hint">Remove <strong style="color:var(--text)">${escapeHtml(s.name)}</strong> from the staff directory?</div>`,
-      'Remove', async ()=>{
-        try{
-          await dbDeleteStaff(s.id);
-        }catch(err){
-          return toast(err.message || 'Could not remove that staff record', true);
-        }
-        state.staffList = state.staffList.filter(x=>x.id !== s.id);
-        saveState();
-        renderOthers();
-        toast('Staff removed');
-      });
-  }
-});
 
 /* ---- LPG Usage: add / edit / delete ---- */
 
@@ -1422,13 +1196,22 @@ function openLpgModal(mode, log){
     }
     saveState();
     closeModal();
-    renderOthers();
+    renderLpgPage();
   });
 }
 
-document.getElementById('btnAddLpg').addEventListener('click', ()=>openLpgModal('add'));
+['otl-from','otl-to'].forEach(id => document.getElementById(id).addEventListener('change', renderOthers));
+document.getElementById('btnOtlReset').addEventListener('click', ()=>{
+  const t = isoDate(new Date());
+  document.getElementById('otl-from').value = t;
+  document.getElementById('otl-to').value = t;
+  renderOthers();
+});
 
-document.getElementById('tbl-lpg').addEventListener('click', e=>{
+// Staff's page (tbl-lpg) never renders Edit/Delete buttons at all (see
+// renderLpgInto's showActions), so this same delegated handler on both
+// tables is harmless there — closest() just never matches anything.
+function lpgTableClick(e){
   const editBtn = e.target.closest('[data-lpg-edit]');
   if(editBtn){
     const l = (state.lpgLogs||[]).find(x=>x.id === Number(editBtn.dataset.lpgEdit));
@@ -1449,22 +1232,27 @@ document.getElementById('tbl-lpg').addEventListener('click', e=>{
         }
         state.lpgLogs = state.lpgLogs.filter(x=>x.id !== l.id);
         saveState();
-        renderOthers();
+        renderLpgPage();
         toast('Record deleted');
       });
   }
-});
+}
 
-/* ---- Admin-only: download Staff Directory + LPG Usage together ---- */
+document.getElementById('btnAddLpg').addEventListener('click', ()=>openLpgModal('add'));
+document.getElementById('btnAddLpgAdmin').addEventListener('click', ()=>openLpgModal('add'));
+document.getElementById('tbl-lpg').addEventListener('click', lpgTableClick);
+document.getElementById('tbl-lpg-admin').addEventListener('click', lpgTableClick);
+
+/* ---- Admin-only: download the Staff Time Log + LPG Usage together ---- */
 
 async function downloadOthersReport(){
   if(!isAdmin()) return toast('Only an Admin can download this report', true);
 
-  const staff = state.staffList || [];
   const logs = (state.lpgLogs || []).slice()
     .sort((a,b)=> String(a.dateStart||'').localeCompare(String(b.dateStart||'')));
+  const timeLogs = (state.staffTimeLogs || []).slice().sort((a,b)=> b.timeIn - a.timeIn);
 
-  if(!staff.length && !logs.length) return toast('Nothing to download yet', true);
+  if(!logs.length && !timeLogs.length) return toast('Nothing to download yet', true);
 
   const DAY_MS = 86400000;
   const daysUsed = l=>{
@@ -1474,18 +1262,9 @@ async function downloadOthersReport(){
   };
   const fmtDate = s => s ? new Date(s+'T00:00:00').toLocaleDateString() : '';
 
-  // One combined sheet, staff on top and LPG right below it, so the LPG
-  // section is impossible to miss — no second tab to remember to click.
+  // One combined sheet, LPG on top and the time log right below it, so
+  // neither section is a second tab someone has to remember to click.
   const sheet = [];
-  sheet.push(['STAFF DIRECTORY']);
-  sheet.push(['Name','Position']);
-  if(staff.length){
-    staff.forEach(s => sheet.push([s.name, s.position || '']));
-  }else{
-    sheet.push(['No staff on file yet']);
-  }
-  sheet.push([]);
-  sheet.push([]);
   sheet.push(['LPG USAGE']);
   sheet.push(['Date Start','Date End','Days Used','Price','Cost / Day']);
   if(logs.length){
@@ -1508,6 +1287,24 @@ async function downloadOthersReport(){
   }else{
     sheet.push(['No LPG usage recorded yet']);
   }
+  sheet.push([]);
+  sheet.push([]);
+  sheet.push(['STAFF TIME LOG']);
+  sheet.push(['Staff','Date','Time In','Time Out','Duration']);
+  if(timeLogs.length){
+    timeLogs.forEach(l=>{
+      const durMs = l.timeOut != null ? (l.timeOut - l.timeIn) : null;
+      sheet.push([
+        l.name,
+        new Date(l.timeIn).toLocaleDateString(),
+        new Date(l.timeIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+        l.timeOut != null ? new Date(l.timeOut).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'Still clocked in',
+        durMs != null ? formatDuration(durMs) : ''
+      ]);
+    });
+  }else{
+    sheet.push(['No time logs recorded yet']);
+  }
 
   const filename = `others-report-${isoDate(new Date())}`;
 
@@ -1519,7 +1316,7 @@ async function downloadOthersReport(){
     const buf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
     const ok = await saveGeneratedFile(filename+'.xlsx',
       new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
-    if(ok) toast('Report downloaded — staff on top, LPG below it on the same sheet');
+    if(ok) toast('Report downloaded — LPG and the time log, stacked on the same sheet');
     return;
   }
 
@@ -1562,7 +1359,7 @@ async function downloadEverything(){
     {Item:'', Value:''},
     {Item:'Total cost in stock now',          Value: round2(state.items.reduce((t,i)=>t+i.cost*i.stock,0))},
     {Item:'Items low or out of stock',           Value: state.items.filter(i=>getStatus(i)!=='in').length},
-    {Item:'Staff on file',                       Value: (state.staffList||[]).length},
+    {Item:'Staff time logs',                     Value: (state.staffTimeLogs||[]).length},
     {Item:'LPG records',                         Value: (state.lpgLogs||[]).length},
     {Item:'Food plans saved',                    Value: cosPlans().length}
   ];
@@ -1616,19 +1413,6 @@ async function downloadEverything(){
     'Alert At': i.threshold, 'Cost/unit': i.cost, Status: statusLabel(getStatus(i))
   }));
 
-  const staffSheet = (state.staffList||[]).map(s=>{
-    const now = new Date();
-    const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-    const daysThisMonth = (s.workDates||[]).filter(d=>d.startsWith(ym)).length;
-    return {
-      Name:s.name, Position:s.position||'',
-      Wage: s.wage!=null ? round2(s.wage) : '',
-      'Per': s.wage!=null ? (s.wagePeriod==='month'?'Month':'Day') : '',
-      'Days Marked This Month': (s.wage!=null && s.wagePeriod!=='month') ? daysThisMonth : '',
-      'Monthly Cost': monthlyWage(s)!=null ? round2(monthlyWage(s)) : ''
-    };
-  });
-
   const DAY_MS = 86400000;
   const daysUsed = l=>{
     if(!l.dateStart || !l.dateEnd) return null;
@@ -1645,6 +1429,17 @@ async function downloadEverything(){
       'Days Used': d != null ? d : '',
       Price: l.price != null ? round2(l.price) : '',
       'Cost / Day': perDay != null ? round2(perDay) : ''
+    };
+  });
+
+  const staffTimeLogSheet = (state.staffTimeLogs||[]).slice().sort((a,b)=>b.timeIn-a.timeIn).map(l=>{
+    const durMs = l.timeOut != null ? (l.timeOut - l.timeIn) : null;
+    return {
+      Staff: l.name,
+      Date: new Date(l.timeIn).toLocaleDateString(),
+      'Time In': new Date(l.timeIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+      'Time Out': l.timeOut != null ? new Date(l.timeOut).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'Still clocked in',
+      Duration: durMs != null ? formatDuration(durMs) : ''
     };
   });
 
@@ -1705,30 +1500,6 @@ async function downloadEverything(){
       });
     });
   });
-
-  /* Man Power: revenue/gross profit don't apply to an individual staff
-     member in this system (nothing attributes sales to one person), so
-     this sheet gives the one number that IS real — labor cost — plus
-     what Gross Profit looks like after paying it. Net Profit here uses
-     Operating Expenses as actually logged, same as the Reports page —
-     wages only count toward it if also logged there as a "Salaries"
-     expense; the labor figures below are a separate, supporting view. */
-  const totalRevenueAll = prodProfitSheet.reduce((t,r)=>t+r.Revenue,0) + foodProfitSheet.reduce((t,r)=>t+r.Revenue,0);
-  const totalGrossAll   = prodProfitSheet.reduce((t,r)=>t+r['Gross Profit'],0) + foodProfitSheet.reduce((t,r)=>t+r['Actual Profit'],0);
-  const totalWasteAll   = prodProfitSheet.reduce((t,r)=>t+r.Waste,0);
-  const laborCostAll    = (state.staffList||[]).reduce((t,s)=>t+(monthlyWage(s)||0),0);
-  const totalExpensesAll = (state.expenses||[]).reduce((t,e)=>t+e.amount,0);
-  const manPowerSheet = [
-    {Item:'Staff on file', Value: (state.staffList||[]).length},
-    {Item:'Total Monthly Labor Cost', Value: round2(laborCostAll)},
-    {Item:'', Value:''},
-    {Item:'Revenue (products + food costing, realized)', Value: round2(totalRevenueAll)},
-    {Item:'Gross Profit (Revenue - COGS)', Value: round2(totalGrossAll)},
-    {Item:'Waste (not subtracted above)', Value: round2(totalWasteAll)},
-    {Item:'Gross Profit After Labor', Value: round2(totalGrossAll - laborCostAll)},
-    {Item:'Total Operating Expenses (all logged expenses)', Value: round2(totalExpensesAll)},
-    {Item:'Net Profit (Gross Profit - Operating Expenses)', Value: round2(totalGrossAll - totalExpensesAll)}
-  ];
 
   const expenseSheet = (state.expenses||[]).slice().sort((a,b)=>a.date-b.date).map(e=>({
     'Expense #': e.expenseNumber, Date: new Date(e.date).toLocaleDateString(), Category: e.category,
@@ -1807,8 +1578,7 @@ async function downloadEverything(){
     'Recipes': recipeSheet,
     'Production': productionSheet,
     'Operating Expenses': expenseSheet,
-    'Staff Directory': staffSheet,
-    'Man Power': manPowerSheet,
+    'Staff Time Log': staffTimeLogSheet,
     'LPG Usage': lpgSheet,
     'Product Profitability': prodProfitSheet,
     'Food Costing Profitability': foodProfitSheet,
