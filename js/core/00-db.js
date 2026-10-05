@@ -744,7 +744,8 @@ async function hydrateFromSupabase(){
     hydrateExpenses(),
     hydrateStaff(),
     hydrateLpgLogs(),
-    hydrateSettings()
+    hydrateSettings(),
+    hydrateStaffTimeLogs()
   ]);
 
   for(const res of [itemsRes, suppliersRes, purchasesRes]){
@@ -754,4 +755,37 @@ async function hydrateFromSupabase(){
   state.items = (itemsRes.data || []).map(mapItemRow);
   state.suppliers = (suppliersRes.data || []).map(mapSupplierRow);
   state.purchases = (purchasesRes.data || []).map(mapPurchaseRow);
+}
+
+/* ---------- staff time in / time out ----------
+   Deliberately separate from the Staff Directory (`staff` table) — that's
+   a payroll list an Admin types in by hand, never tied to a login
+   account. This is tied directly to the signed-in account, and both
+   time_in and time_out are the SERVER's clock, set only by the two
+   RPCs below (see 0029_staff_time_logs.sql) — there's no update/insert
+   RLS policy on the table itself, so there's no path for a staff
+   account to backdate or edit either value. */
+function mapTimeLogRow(r){
+  return {
+    id: r.id, userId: r.user_id, name: r.name,
+    timeIn: new Date(r.time_in).getTime(),
+    timeOut: r.time_out ? new Date(r.time_out).getTime() : null
+  };
+}
+
+async function hydrateStaffTimeLogs(){
+  const { data, error } = await sb.from('staff_time_logs').select('*').order('time_in', { ascending: false });
+  if(error){ toast('Could not load Staff time logs: ' + error.message, true); return; }
+  state.staffTimeLogs = (data || []).map(mapTimeLogRow);
+}
+
+async function dbTimeIn(){
+  const { data, error } = await sb.rpc('staff_time_in');
+  if(error) throw error;
+  return data;   // the new log's id
+}
+
+async function dbTimeOut(logId){
+  const { error } = await sb.rpc('staff_time_out', { p_log_id: logId });
+  if(error) throw error;
 }

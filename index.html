@@ -121,6 +121,7 @@
       <li class="nav-item" data-staffonly="1" data-view="cos"><span class="ic">🍽</span>Menu Plan<span class="cursor"></span></li>
       <li class="nav-item" data-staffonly="1" data-view="recipes"><span class="ic">📖</span>Recipes<span class="cursor"></span></li>
       <li class="nav-item" data-staffonly="1" data-view="production"><span class="ic">🏭</span>Production<span class="cursor"></span></li>
+      <li class="nav-item" data-view="stafftime"><span class="ic">🕒</span>Staff<span class="cursor"></span></li>
 
       <li class="nav-section" data-admin="1">Expenses</li>
       <li class="nav-item" data-admin="1" data-view="expenses"><span class="ic">🧯</span>Operating Expenses<span class="cursor"></span></li>
@@ -612,6 +613,25 @@
       </div>
     </section>
 
+    <!-- STAFF TIME -->
+    <section class="view" id="view-stafftime">
+      <div class="card" id="stt-status-card">
+        <div class="card-body">
+          <div class="hint" id="stt-status" style="font-size:14px;"></div>
+          <button class="btn primary" id="btnTimeOut" style="margin-top:12px;display:none;">Time Out</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ct">Time Log</div><div class="hint" id="stt-histcount"></div></div>
+        <div class="card-body" style="padding:0;max-height:480px;overflow-y:auto;">
+          <table><thead><tr>
+            <th data-admin="1">Staff</th><th>Date</th><th>Time In</th><th>Time Out</th><th>Duration</th>
+          </tr></thead><tbody id="tbl-stafftime"></tbody></table>
+        </div>
+      </div>
+    </section>
+
     <!-- EXPENSES -->
     <section class="view" id="view-expenses">
       <div class="toolbar">
@@ -939,6 +959,7 @@
 <script src="js/reports/19-history-retention-staff-reports.js"></script>
 <script src="js/reports/20-reports.js"></script>
 <script src="js/menu-plan/21-cos.js"></script>
+<script src="js/nav/23-staff-timeclock.js"></script>
 <script src="js/core/22-boot.js"></script>
 <script>
 if('serviceWorker' in navigator){

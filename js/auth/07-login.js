@@ -26,8 +26,15 @@ async function showAuthScreen(){
    compiled from this same source again — it no longer blocks login.) */
 const APP_BUILD = window.APP_BUILD || 'admin';
 
-/* `profile` is a row from the `profiles` table: {id, username, name, role, email, created_at}. */
-async function enterApp(profile){
+/* `profile` is a row from the `profiles` table: {id, username, name, role, email, created_at}.
+   `isFreshLogin` is false only for the one caller that ISN'T a real
+   login — init()'s session-resume path in 22-boot.js, for a session
+   that survived a page refresh (see 00-supabase.js). Every other
+   caller here is a genuine sign-in, so Time In prompts on all of them
+   (gated to Staff accounts only, inside the check below) — it just
+   must never re-fire on a plain F5, or everyday use would mean
+   re-clocking-in on every refresh. */
+async function enterApp(profile, isFreshLogin){
   currentUser = profile;
   await Promise.all([ refreshProfiles(), hydrateFromSupabase() ]);
 
@@ -43,9 +50,17 @@ async function enterApp(profile){
 
   applyRolePermissions();
   document.getElementById('authScreen').style.display = 'none';
-  document.getElementById('app').style.visibility = 'visible';
 
   navigate(profile.role === 'admin' ? 'dashboard' : 'sales');   // staff open on the till
+
+  // The app itself stays hidden behind this — see promptTimeIn() in
+  // 23-staff-timeclock.js — until Time In is confirmed (or fails and
+  // lets them through anyway rather than locking out the till).
+  if(isFreshLogin && profile.role === 'staff'){
+    await promptTimeIn(profile);
+  }
+
+  document.getElementById('app').style.visibility = 'visible';
   toast(`Welcome, ${profile.name.split(' ')[0]}`);
 }
 
@@ -106,7 +121,7 @@ document.getElementById('btnSetup').addEventListener('click', async ()=>{
 
   const { data: profile } = await sb.from('profiles').select('*').eq('id', data.user.id).single();
   authMsg('setupMsg', 'Account created.', true);
-  enterApp(profile);
+  enterApp(profile, true);
 });
 
 /* ---------- Sign in ---------- */
@@ -133,7 +148,7 @@ async function doLogin(){
 
   authMsg('loginMsg','');
   document.getElementById('li-pass').value = '';
-  enterApp(profile);
+  enterApp(profile, true);
 }
 
 /* ---------- Sign up ---------- */
@@ -256,7 +271,7 @@ document.getElementById('btnSwitchAdmin').addEventListener('click', ()=>{
 
     const { data: profile } = await sb.from('profiles').select('*').eq('id', data.user.id).single();
     closeModal();
-    enterApp(profile);
+    enterApp(profile, true);
     toast(`Switched to ${profile.name}`);
   }
 

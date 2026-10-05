@@ -70,6 +70,7 @@ function defaultState(){
        shows up that nobody actually typed in. Create your first plan with
        "+ New Plan" on the Menu Plan page. */
     cosPlans: [],
+    staffTimeLogs: [],
   };
 }
 

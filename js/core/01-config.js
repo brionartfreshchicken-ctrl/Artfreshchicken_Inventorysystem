@@ -58,6 +58,7 @@ const pageMeta = {
   cos:        {ic:'🍽', title:'Menu Plan',        sub:'Plan each day: foods, ingredients, servings and cost per serving'},
   recipes:    {ic:'📖', title:'Recipes',          sub:'Reusable recipes — ingredients, cost per serving, selling price and margin'},
   production: {ic:'🏭', title:'Production',       sub:'Cook a recipe, deduct ingredients, and stock the finished item'},
+  stafftime:  {ic:'🕒', title:'Staff',            sub:'Time in / time out — recorded by the system, not editable'},
   expenses:   {ic:'🧯', title:'Operating Expenses', sub:'Every expense the business logs, plus Staff Directory and LPG usage'},
   reports:    {ic:'📊', title:'Reports',          sub:'Profit & Loss, best sellers and waste'},
   settings:   {ic:'⚙',  title:'Settings',         sub:'Accounts and access'},

@@ -114,7 +114,7 @@ async function init(){
   const { data: { session } } = await sb.auth.getSession();
   if(session){
     const { data: profile } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
-    if(profile){ await enterApp(profile); return; }
+    if(profile){ await enterApp(profile, false); return; }
   }
   // The app stays hidden until someone signs in
   await showAuthScreen();

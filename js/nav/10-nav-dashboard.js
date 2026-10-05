@@ -140,6 +140,7 @@ function renderAll(){
   renderCosHistory();
   renderOthers();
   renderProfitability();
+  renderStaffTime();
 }
 
 /* ============================= FILTER EVENTS ============================= */

@@ -32,14 +32,24 @@ const modalBody = document.getElementById('modalBody');
 
 const modalFoot = document.getElementById('modalFoot');
 
-function openModal(title, bodyHtml, footHtml){
+/* `locked` is for the rare modal that has to be dealt with before
+   anything else happens (right now: just the post-login Time In
+   prompt) — hides the ✕ and stops the overlay-click/Escape shortcuts
+   from dismissing it. The code that opened it is still the one that
+   calls closeModal() once its own action completes; this only blocks
+   the three ways a person could otherwise back out of it. */
+let modalLocked = false;
+
+function openModal(title, bodyHtml, footHtml, locked){
   modalTitle.textContent = title;
   modalBody.innerHTML = bodyHtml;
   modalFoot.innerHTML = footHtml;
+  modalLocked = !!locked;
+  document.getElementById('modalClose').style.display = modalLocked ? 'none' : '';
   overlay.classList.add('active');
 }
 
-function closeModal(){ overlay.classList.remove('active'); }
+function closeModal(){ modalLocked = false; overlay.classList.remove('active'); }
 
 /* Generic collapsible card header — click a <div class="card-head
    collapsible-head" data-toggle-target="someId"> to hide/show
@@ -98,11 +108,11 @@ function openPriceCalculator(unitLabel, onApply){
   document.getElementById('pc-paid').focus();
 }
 
-document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('modalClose').addEventListener('click', ()=>{ if(!modalLocked) closeModal(); });
 
-overlay.addEventListener('click', e=>{ if(e.target===overlay) closeModal(); });
+overlay.addEventListener('click', e=>{ if(e.target===overlay && !modalLocked) closeModal(); });
 
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !modalLocked) closeModal(); });
 
 /* ---------- Add / Edit item modal ---------- */
 
