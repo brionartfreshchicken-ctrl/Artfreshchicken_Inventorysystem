@@ -13,6 +13,17 @@ function myOpenTimeLog(){
   return (state.staffTimeLogs||[]).find(l => l.userId === currentUser.id && l.timeOut == null) || null;
 }
 
+/* staff_time_in() (0031) now hands back an ALREADY-open shift's id
+   instead of always minting a new row — the real fix for two tabs on
+   the same account both calling Time In before either finished. Only
+   add a local entry for an id we don't already have, or that race
+   would show as two identical rows client-side even though the
+   database correctly only ever has the one. */
+function recordTimeInLocally(logId, userId, name){
+  if((state.staffTimeLogs||[]).some(l => l.id === logId)) return;
+  state.staffTimeLogs.unshift({ id: logId, userId, name, timeIn: Date.now(), timeOut: null });
+}
+
 /* The post-login prompt only fires once per calendar day — logging out
    at lunch and back in later the same day (or switching between staff
    accounts on a shared terminal and back) shouldn't ask again. "Today"
@@ -114,10 +125,7 @@ async function doTimeIn(){
   btns.forEach(b => b.disabled = true);
   try{
     const logId = await dbTimeIn();
-    state.staffTimeLogs.unshift({
-      id: logId, userId: currentUser.id, name: currentUser.name,
-      timeIn: Date.now(), timeOut: null
-    });
+    recordTimeInLocally(logId, currentUser.id, currentUser.name);
     toast('Timed in — have a good shift!', 'success');
   }catch(err){
     toast('Could not record Time In: ' + err.message, true);
@@ -212,7 +220,7 @@ function promptTimeIn(profile){
       btn.disabled = true; btn.textContent = 'Recording…';
       try{
         const logId = await dbTimeIn();
-        state.staffTimeLogs.unshift({ id: logId, userId: profile.id, name: profile.name, timeIn: Date.now(), timeOut: null });
+        recordTimeInLocally(logId, profile.id, profile.name);
       }catch(err){
         // A failed clock-in shouldn't lock a cashier out of the till —
         // let them in anyway and retry from the Staff page's own button.

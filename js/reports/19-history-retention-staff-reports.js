@@ -1157,6 +1157,14 @@ document.getElementById('btnDetailedPL').addEventListener('click', openDetailedP
 /* ---- LPG Usage: add / edit / delete ---- */
 
 function openLpgModal(mode, log){
+  // Editing/deleting an existing record is Admin-only — RLS already
+  // rejects the actual write either way (lpg_logs_update/delete), but
+  // the Edit/Delete buttons this opens for only exist on the Admin-only
+  // Operating Expenses page, which a Staff account can't navigate to —
+  // except their copy of this page's DOM is still there, just hidden,
+  // like every other .view section. Same check-both-layers pattern as
+  // Stock In/Out, Void, Delete Permanently elsewhere in this app.
+  if(mode !== 'add' && !isAdmin()) return toast('Only an Admin can edit an LPG record', true);
   const body = `
     <div class="field-row">
       <div class="field"><label>Date Start</label><input id="f-lpg-start" type="date" value="${log?log.dateStart||'':''}"/></div>
@@ -1220,6 +1228,7 @@ function lpgTableClick(e){
   }
   const delBtn = e.target.closest('[data-lpg-del]');
   if(delBtn){
+    if(!isAdmin()) return toast('Only an Admin can delete an LPG record', true);
     const l = (state.lpgLogs||[]).find(x=>x.id === Number(delBtn.dataset.lpgDel));
     if(!l) return;
     confirmAction('Delete LPG record',
