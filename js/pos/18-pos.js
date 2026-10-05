@@ -165,15 +165,35 @@ function cartGrandTotal(){
   return Math.max(0, computeCartTotals().benta - cartDiscount() + cartExtraCharge());
 }
 
+/* Phone-width stand-in for the sticky Current Sale card (see
+   .pos-float-cart in styles.css) — only ever visible there, but kept in
+   step unconditionally so it's already correct the moment that
+   breakpoint applies, same as everything else updatePosTotals() does. */
+function updateFloatCart(){
+  const bar = document.getElementById('posFloatCart');
+  if(!bar) return;
+  if(!cart.length){ bar.style.display = 'none'; return; }
+  const tot = computeCartTotals();
+  document.getElementById('posFloatCartCount').textContent =
+    `${Math.round(tot.units*100)/100} item${tot.units===1?'':'s'}`;
+  document.getElementById('posFloatCartTotal').textContent = peso(cartGrandTotal());
+  bar.style.display = 'flex';
+}
+document.getElementById('posFloatCart').addEventListener('click', ()=>{
+  document.querySelector('.pos-cart-card').scrollIntoView({behavior:'smooth', block:'start'});
+});
+
 function updatePosTotals(){
   if(!cart.length){
     document.getElementById('pos-gcash-card').classList.remove('show');
     document.getElementById('btnCompleteSale').disabled = true;
+    updateFloatCart();
     return;
   }
   const discount = cartDiscount();
   const extra = cartExtraCharge();
   const total = cartGrandTotal();
+  updateFloatCart();
 
   const discLine = document.getElementById('ct-discount-line');
   if(discLine){

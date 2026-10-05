@@ -333,7 +333,7 @@
           <div class="card-body"><div id="posGrid"></div></div>
         </div>
 
-        <div class="card">
+        <div class="card pos-cart-card">
           <div class="card-head"><div class="ct">Current Sale</div><div class="hint" id="cartCount">empty</div></div>
           <div class="card-body" style="padding:0;">
             <div id="cartBox"></div>
@@ -381,6 +381,16 @@
           </div>
         </div>
       </div>
+
+      <!-- Phone-width only (see .pos-float-cart in styles.css) — Current
+           Sale moves below the product list on a narrow screen instead of
+           staying pinned beside it, so this stays reachable without
+           scrolling all the way down to it. -->
+      <button type="button" class="pos-float-cart" id="posFloatCart" style="display:none;">
+        <span id="posFloatCartCount">0 items</span>
+        <span id="posFloatCartTotal">₱0.00</span>
+        <span class="pfc-action">View Cart ↓</span>
+      </button>
     </section>
 
     <!-- HISTORY -->
