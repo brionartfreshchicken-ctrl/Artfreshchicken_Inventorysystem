@@ -443,59 +443,6 @@ async function hydrateExpenses(){
   state.expenses = (data || []).map(mapExpenseRow);
 }
 
-/* ---------- staff directory ---------- */
-
-function mapStaffRow(r){
-  return {
-    id: r.id, name: r.name, position: r.position || '',
-    wage: r.wage == null ? null : Number(r.wage), wagePeriod: r.wage_period,
-    workDates: (r.staff_work_dates || []).map(d => d.work_date)
-  };
-}
-
-function staffToRow(o){
-  return { name: o.name, position: o.position, wage: o.wage, wage_period: o.wagePeriod };
-}
-
-async function dbInsertStaff(o){
-  const { data, error } = await sb.from('staff').insert(staffToRow(o)).select().single();
-  if(error) throw error;
-  if(o.workDates && o.workDates.length){
-    const rows = o.workDates.map(d => ({ staff_id: data.id, work_date: d }));
-    const { error: wdErr } = await sb.from('staff_work_dates').insert(rows);
-    if(wdErr) throw wdErr;
-  }
-  const full = await sb.from('staff').select('*, staff_work_dates(*)').eq('id', data.id).single();
-  if(full.error) throw full.error;
-  return mapStaffRow(full.data);
-}
-
-async function dbUpdateStaff(id, o){
-  const { error } = await sb.from('staff').update(staffToRow(o)).eq('id', id);
-  if(error) throw error;
-  const { error: delErr } = await sb.from('staff_work_dates').delete().eq('staff_id', id);
-  if(delErr) throw delErr;
-  if(o.workDates && o.workDates.length){
-    const rows = o.workDates.map(d => ({ staff_id: id, work_date: d }));
-    const { error: insErr } = await sb.from('staff_work_dates').insert(rows);
-    if(insErr) throw insErr;
-  }
-  const full = await sb.from('staff').select('*, staff_work_dates(*)').eq('id', id).single();
-  if(full.error) throw full.error;
-  return mapStaffRow(full.data);
-}
-
-async function dbDeleteStaff(id){
-  const { error } = await sb.from('staff').delete().eq('id', id);
-  if(error) throw error;
-}
-
-async function hydrateStaff(){
-  const { data, error } = await sb.from('staff').select('*, staff_work_dates(*)').order('name');
-  if(error){ toast('Could not load the Staff Directory: ' + error.message, true); return; }
-  state.staffList = (data || []).map(mapStaffRow);
-}
-
 /* ---------- LPG usage ---------- */
 
 function mapLpgRow(r){
@@ -742,7 +689,6 @@ async function hydrateFromSupabase(){
     hydrateCosPlans(),
     hydrateSales(),
     hydrateExpenses(),
-    hydrateStaff(),
     hydrateLpgLogs(),
     hydrateSettings(),
     hydrateStaffTimeLogs()
