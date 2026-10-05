@@ -522,7 +522,11 @@ body.staff-mode .money-col{display:none;}
 .pos-float-cart #posFloatCartCount{font-size:12.5px;opacity:.9;flex:1;text-align:left;}
 .pos-float-cart #posFloatCartTotal{font-size:16px;font-weight:800;}
 .pos-float-cart .pfc-action{font-size:12px;font-weight:700;opacity:.9;}
-.pos-grid{display:flex;flex-direction:column;gap:9px;}
+/* Each category's own item list scrolls on its own, capped to a few
+   tiles tall — Snacks' 38 items no longer push Drinks' header down the
+   page out of reach; the category label above stays put since it's
+   outside this scroll box, not pinned inside it. */
+.pos-grid{display:flex;flex-direction:column;gap:9px;max-height:420px;overflow-y:auto;padding-right:4px;}
 .pos-tile{
   display:flex;flex-direction:row;align-items:center;gap:14px;text-align:left;cursor:pointer;
   background:var(--panel);border:1px solid var(--border);border-radius:12px;

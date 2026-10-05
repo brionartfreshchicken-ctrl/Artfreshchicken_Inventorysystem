@@ -151,6 +151,11 @@ document.getElementById('tbl-expenses').addEventListener('click', e=>{
 });
 
 function rowActions(i){
+  // Every action here (Stock In/Out, Add Size, Edit, Delete) is Admin-only
+  // — see 22-boot.js's click handler. Showing them to Staff just meant
+  // five buttons that all produced the same "Only an Admin can..." toast,
+  // so Staff get the plain, read-only row instead of a row of dead ends.
+  if(!isAdmin()) return `<span class="hint">View only</span>`;
   const sizeBtn = (i.category==='ingredient' || i.category==='tools') ? '' :
     `<button class="btn small ghost" data-act="size" data-id="${i.id}" title="Add another size of ${escapeHtml(i.name)}">⧉ Add Size</button>`;
   return `<div class="row-actions">
