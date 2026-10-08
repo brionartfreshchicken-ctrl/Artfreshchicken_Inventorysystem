@@ -6,7 +6,7 @@
 <title>FoodTrack — Full System</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d9488">
-<link rel="icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/artfresh-favicon.png?v=4">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -98,11 +98,8 @@
 
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-mark">🍲</div>
-      <div>
-        <div class="b1">FoodTrack</div>
-        <div class="b2">Inventory &amp; Costing</div>
-      </div>
+      <div class="brand-mark"><img src="icons/AFCC Logo.png" alt="Art Fresh"/></div>
+      <div class="b2">Inventory &amp; Costing</div>
     </div>
     <ul class="navlist" id="navlist">
       <li class="nav-item active" data-view="dashboard"><span class="ic">🖥</span>Dashboard<span class="cursor"></span></li>
@@ -524,6 +521,7 @@
         <div style="flex:1;"></div>
         <button class="btn danger" id="btnCosDeletePlan">Delete Plan</button>
         <button class="btn" id="btnCosExport">⬇ Export Program</button>
+        <button class="btn" id="btnCosAudit" title="Check that every ingredient used across all plans is correctly linked to Ingredients inventory">🔗 Check Ingredient Links</button>
       </div>
 
       <div class="card" id="cos-empty" style="display:none;">

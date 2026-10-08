@@ -1325,6 +1325,8 @@ document.getElementById('btnCosExport').addEventListener('click', ()=>{
   downloadCosSheet(buildCosPlanSheet(plan), `cos-planning-${isoDate(new Date())}`, 'Program exported');
 });
 
+document.getElementById('btnCosAudit').addEventListener('click', renderIngredientAuditModal);
+
 /* ============================= CLOCK ============================= */
 
 
@@ -1458,4 +1460,84 @@ function returnDeduction(food){
   food.deducted = null;
   food.deductedAt = null;
   return n;
+}
+
+/* ===================== INGREDIENT CONNECTION AUDIT =====================
+   Every ingredient line across every plan is matched to the Ingredients
+   inventory the exact same way planDeduction() does — by trimmed,
+   lowercased name, then by unit (with conversion). A line can silently
+   fail to deduct for three different reasons, so each gets its own
+   status rather than one generic "not found": the name might not exist
+   as a Product at all, it might exist but be saved under the wrong
+   category (a common mistake — e.g. filed under "food" instead of
+   "ingredient"), or it might match but in a unit nothing converts to. */
+function auditIngredientConnections(){
+  const rows = [];
+  cosPlans().forEach(p=>{
+    (p.foods||[]).forEach(f=>{
+      (f.lines||[]).forEach(l=>{
+        const name = String(l.name||'').trim();
+        if(!name) return;
+        const unit = l.qtyUnit || '';
+        const key = name.toLowerCase();
+        const sameName = state.items.find(i => i.name.trim().toLowerCase() === key);
+        const ingItem = (sameName && sameName.category === 'ingredient') ? sameName : null;
+
+        let status, detail;
+        if(!sameName){
+          status = 'missing';
+          detail = 'No Product with this name exists at all';
+        }else if(!ingItem){
+          status = 'wrong-category';
+          detail = `Found, but saved under "${catLabel(sameName.category)}" — not Ingredients`;
+        }else if(unit !== ingItem.unit && convertQtyForItem(1, unit, ingItem) === null){
+          status = 'unit-mismatch';
+          detail = `Planned in "${unit||'—'}", stocked in "${ingItem.unit}" — no conversion set on the Product`;
+        }else{
+          status = 'ok';
+          detail = `Connected — stocked in ${ingItem.unit}, ${ingItem.stock} on hand`;
+        }
+        rows.push({ plan: planLabel(p), food: f.name || 'Untitled', name, unit, status, detail });
+      });
+    });
+  });
+  return rows;
+}
+
+function renderIngredientAuditModal(){
+  const rows = auditIngredientConnections();
+  const counts = { ok:0, missing:0, 'wrong-category':0, 'unit-mismatch':0 };
+  rows.forEach(r => counts[r.status]++);
+  const problems = rows.filter(r => r.status !== 'ok');
+
+  const summary = `<div class="hint" style="margin-bottom:12px;">
+    ${rows.length} ingredient line${rows.length===1?'':'s'} checked across every Menu Plan —
+    <b style="color:var(--green,#1e7b34);">${counts.ok} connected</b>,
+    <b style="color:var(--red,#c00);">${counts.missing} missing</b>,
+    <b style="color:#b1591a;">${counts['wrong-category']} wrong category</b>,
+    <b style="color:#b1591a;">${counts['unit-mismatch']} unit mismatch</b>.
+  </div>`;
+
+  const statusLabel = { missing:'MISSING', 'wrong-category':'WRONG CATEGORY', 'unit-mismatch':'UNIT MISMATCH' };
+  const statusColor  = { missing:'#c00', 'wrong-category':'#b1591a', 'unit-mismatch':'#b1591a' };
+
+  const body = problems.length === 0
+    ? `${summary}<div class="hint" style="color:var(--green,#1e7b34);font-weight:700;">✅ Every ingredient used in every Menu Plan is correctly connected to Ingredients inventory — nothing will silently fail to deduct.</div>`
+    : `${summary}<table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead><tr style="text-align:left;border-bottom:1px solid var(--border,#333);">
+          <th style="padding:4px 6px;">Status</th><th style="padding:4px 6px;">Ingredient</th>
+          <th style="padding:4px 6px;">Used in</th><th style="padding:4px 6px;">Why</th>
+        </tr></thead>
+        <tbody>
+          ${problems.map(r => `<tr style="border-bottom:1px solid var(--border,#2a2a2a22);">
+            <td style="padding:5px 6px;white-space:nowrap;"><b style="color:${statusColor[r.status]};">${statusLabel[r.status]}</b></td>
+            <td style="padding:5px 6px;">${escapeHtml(r.name)}</td>
+            <td style="padding:5px 6px;">${escapeHtml(r.food)} <span class="hint">(${escapeHtml(r.plan)})</span></td>
+            <td style="padding:5px 6px;color:var(--sub,#666);">${escapeHtml(r.detail)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+  openModal('Ingredient Connection Check', body, `<button class="btn primary" id="btnAuditClose">Close</button>`);
+  document.getElementById('btnAuditClose').addEventListener('click', closeModal);
 }
