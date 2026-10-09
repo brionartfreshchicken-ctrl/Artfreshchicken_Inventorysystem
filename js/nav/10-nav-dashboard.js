@@ -17,6 +17,17 @@ function navigate(view){
     toast('That page is for Staff only', true);
     view = 'dashboard';                             // admins land on the overview
   }
+  if(staffFeatureBlocked(view)){
+    toast('An Admin has turned that page off for Staff right now', true);
+    view = 'dashboard';                             // always reachable by both roles
+  }
+  // Recipes/Production paused for everyone, both roles — see the nav
+  // markup's own comment for why this is a hide, not a delete.
+  const PAUSED = ['recipes','production'];
+  if(PAUSED.includes(view)){
+    toast('That page is turned off right now', true);
+    view = isAdmin() ? 'dashboard' : 'sales';
+  }
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.view===view));
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id==='view-'+view));
 
@@ -142,6 +153,7 @@ function renderAll(){
   renderProfitability();
   renderStaffTime();
   renderLpgPage();
+  renderStaffAccessSettings();
 }
 
 /* ============================= FILTER EVENTS ============================= */

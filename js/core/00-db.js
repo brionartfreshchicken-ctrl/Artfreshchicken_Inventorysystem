@@ -228,6 +228,10 @@ function settingsToRow(o){
   if('gcashQrPath' in o) row.gcash_qr_path = o.gcashQrPath;
   if('retentionDays' in o) row.retention_days = o.retentionDays;
   if('lastPurge' in o) row.last_purge = o.lastPurge ? new Date(o.lastPurge).toISOString() : null;
+  if('staffProductsEnabled' in o) row.staff_products_enabled = o.staffProductsEnabled;
+  if('staffPosEnabled' in o) row.staff_pos_enabled = o.staffPosEnabled;
+  if('staffFoodCostingEnabled' in o) row.staff_foodcosting_enabled = o.staffFoodCostingEnabled;
+  if('staffOtherEnabled' in o) row.staff_other_enabled = o.staffOtherEnabled;
   return row;
 }
 
@@ -243,6 +247,10 @@ async function hydrateSettings(){
   state.gcashQrImage = publicImageUrl(data.gcash_qr_path);
   state.retentionDays = data.retention_days || 0;
   state.lastPurge = data.last_purge ? new Date(data.last_purge).getTime() : null;
+  state.staffProductsEnabled = data.staff_products_enabled !== false;
+  state.staffPosEnabled = data.staff_pos_enabled !== false;
+  state.staffFoodCostingEnabled = data.staff_foodcosting_enabled !== false;
+  state.staffOtherEnabled = data.staff_other_enabled !== false;
 }
 
 /* ---------- document numbers ---------- */

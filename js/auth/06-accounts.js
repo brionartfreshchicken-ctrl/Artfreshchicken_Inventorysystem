@@ -60,6 +60,7 @@ function applyRolePermissions(){
     el.style.display = admin ? '' : 'none');
   document.querySelectorAll('[data-staffonly]').forEach(el =>
     el.style.display = admin ? 'none' : '');
+  applyStaffFeatureVisibility();
   document.body.classList.toggle('staff-mode', !admin);
   renderAll();
 }

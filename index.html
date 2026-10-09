@@ -105,21 +105,29 @@
       <li class="nav-item active" data-view="dashboard"><span class="ic">🖥</span>Dashboard<span class="cursor"></span></li>
 
       <li class="nav-section">Inventory</li>
-      <li class="nav-item" data-view="inventory"><span class="ic">📦</span>Products<span class="cursor"></span></li>
+      <li class="nav-item" data-feature="inventory" data-view="inventory"><span class="ic">📦</span>Products<span class="cursor"></span></li>
       <li class="nav-item" data-admin="1" data-view="stockmovements"><span class="ic">🔄</span>Stock Movements<span class="cursor"></span></li>
       <li class="nav-item" data-admin="1" data-view="purchases"><span class="ic">🧾</span>Purchases<span class="cursor"></span></li>
       <li class="nav-item" data-admin="1" data-view="suppliers"><span class="ic">🚚</span>Suppliers<span class="cursor"></span></li>
 
       <li class="nav-section">Sales</li>
-      <li class="nav-item" data-staffonly="1" data-view="sales"><span class="ic">🛒</span>Point of Sale<span class="cursor"></span></li>
+      <li class="nav-item" data-staffonly="1" data-feature="sales" data-view="sales"><span class="ic">🛒</span>Point of Sale<span class="cursor"></span></li>
       <li class="nav-item" data-admin="1" data-view="history"><span class="ic">📅</span>Sales History<span class="cursor"></span></li>
 
       <li class="nav-section" data-staffonly="1">Food Costing</li>
-      <li class="nav-item" data-staffonly="1" data-view="cos"><span class="ic">🍽</span>Menu Plan<span class="cursor"></span></li>
-      <li class="nav-item" data-staffonly="1" data-view="recipes"><span class="ic">📖</span>Recipes<span class="cursor"></span></li>
-      <li class="nav-item" data-staffonly="1" data-view="production"><span class="ic">🏭</span>Production<span class="cursor"></span></li>
-      <li class="nav-item" data-staffonly="1" data-view="stafftime"><span class="ic">🕒</span>Staff<span class="cursor"></span></li>
-      <li class="nav-item" data-staffonly="1" data-view="lpg"><span class="ic">🔥</span>LPG Usage<span class="cursor"></span></li>
+      <li class="nav-item" data-staffonly="1" data-feature="cos" data-view="cos"><span class="ic">🍽</span>Menu Plan<span class="cursor"></span></li>
+      <!-- Recipes and Production hidden from the nav for both roles —
+           feature paused, not removed: the pages, their data, and the
+           Download Everything backup sheets are all untouched, so this
+           is reversible by just deleting the inline style below. No
+           data-staffonly here on purpose — applyRolePermissions()'s own
+           sweep would reset display:'' for Staff and undo this. -->
+      <li class="nav-item" data-view="recipes" style="display:none;"><span class="ic">📖</span>Recipes<span class="cursor"></span></li>
+      <li class="nav-item" data-view="production" style="display:none;"><span class="ic">🏭</span>Production<span class="cursor"></span></li>
+
+      <li class="nav-section" data-staffonly="1">Other</li>
+      <li class="nav-item" data-staffonly="1" data-feature="stafftime" data-view="stafftime"><span class="ic">🕒</span>Staff<span class="cursor"></span></li>
+      <li class="nav-item" data-staffonly="1" data-feature="lpg" data-view="lpg"><span class="ic">🔥</span>LPG Usage<span class="cursor"></span></li>
 
       <li class="nav-section" data-admin="1">Expenses</li>
       <li class="nav-item" data-admin="1" data-view="expenses"><span class="ic">🧯</span>Operating Expenses<span class="cursor"></span></li>
@@ -400,11 +408,6 @@
           <option value="weekly">Weekly</option>
           <option value="monthly">Monthly</option>
         </select>
-        <span class="hint">From</span>
-        <input type="date" id="hs-from" style="width:auto;"/>
-        <span class="hint">To</span>
-        <input type="date" id="hs-to" style="width:auto;"/>
-        <button class="btn ghost small" id="btnHsReset">Reset dates</button>
         <div style="flex:1;"></div>
         <button class="btn primary" id="btnDownloadAll">⬇ Download All</button>
         <button class="btn danger" id="btnClearHistory">Void Records in Range</button>
@@ -487,14 +490,20 @@
       </div>
 
       <div class="card" id="hs-presets-card">
-        <div class="card-body" style="padding:12px 16px;">
-          <span class="hint" style="margin-right:8px;">Quick pick:</span>
+        <div class="card-body" style="padding:12px 16px;display:flex;align-items:center;flex-wrap:wrap;gap:10px;">
+          <span class="hint" style="margin-right:2px;">Quick pick:</span>
           <button class="btn ghost small" data-preset="today">Today</button>
           <button class="btn ghost small" data-preset="7">Last 7 days</button>
           <button class="btn ghost small" data-preset="30">Last 30 days</button>
           <button class="btn ghost small" data-preset="month">This month</button>
           <button class="btn ghost small" data-preset="lastmonth">Last month</button>
           <button class="btn ghost small" data-preset="all">All time</button>
+          <div style="flex:1;min-width:16px;"></div>
+          <span class="hint">Start date</span>
+          <input type="date" id="hs-from" style="width:auto;"/>
+          <span class="hint">End date</span>
+          <input type="date" id="hs-to" style="width:auto;"/>
+          <button class="btn ghost small" id="btnHsReset">Reset dates</button>
         </div>
       </div>
 
@@ -919,6 +928,39 @@
       </div>
 
       <div class="card">
+        <div class="card-head"><div class="ct">Staff Access</div>
+          <div class="hint">Admin only — turn a page off and it disappears from Staff's sidebar entirely</div></div>
+        <div class="card-body">
+          <div class="hint" style="margin-bottom:14px;">
+            Switch a feature off to temporarily stop Staff from using it —
+            useful during a stock take, a system change, or any time you
+            want Staff locked out of a specific page without changing
+            anyone's account. Admin access is never affected by these.
+          </div>
+          <div class="field-row" style="align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-soft);">
+            <div><div style="font-weight:700;">Products</div>
+              <div class="hint">View and manage stock in the Products page</div></div>
+            <button class="btn-toggle" id="toggleStaffProducts" data-staff-toggle="staffProductsEnabled">ON</button>
+          </div>
+          <div class="field-row" style="align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-soft);">
+            <div><div style="font-weight:700;">Point of Sale</div>
+              <div class="hint">Ring up sales at the till</div></div>
+            <button class="btn-toggle" id="toggleStaffPos" data-staff-toggle="staffPosEnabled">ON</button>
+          </div>
+          <div class="field-row" style="align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-soft);">
+            <div><div style="font-weight:700;">Food Costing</div>
+              <div class="hint">Plan foods and their ingredients in Menu Plan</div></div>
+            <button class="btn-toggle" id="toggleStaffFoodCosting" data-staff-toggle="staffFoodCostingEnabled">ON</button>
+          </div>
+          <div class="field-row" style="align-items:center;justify-content:space-between;padding:10px 0;">
+            <div><div style="font-weight:700;">Other</div>
+              <div class="hint">Staff Time Clock and LPG Usage</div></div>
+            <button class="btn-toggle" id="toggleStaffOther" data-staff-toggle="staffOtherEnabled">ON</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-head"><div class="ct">User Accounts</div>
           <div class="hint">New accounts sign up from the login screen — promote or remove access below.</div></div>
         <div class="card-body" style="padding:0;">
@@ -984,6 +1026,7 @@
 <script src="js/reports/20-reports.js"></script>
 <script src="js/menu-plan/21-cos.js"></script>
 <script src="js/nav/23-staff-timeclock.js"></script>
+<script src="js/settings/24-staff-access.js"></script>
 <script src="js/core/22-boot.js"></script>
 <script>
 if('serviceWorker' in navigator){

@@ -31,25 +31,29 @@ function renderPOS(){
     const inCart = cart.find(c=>c.itemId===i.id);
     const left = i.stock - (inCart ? inCart.qty : 0);
     const status = getStatus(i);
-    const thumb = i.image ? `<img class="pt-photo" src="${i.image}"/>` : '';
+    const placeholderIcon = {food:'🍽', snack:'🍿', drink:'🥤'}[i.category] || '🧺';
+    const thumb = i.image
+      ? `<img class="pt-photo" src="${i.image}"/>`
+      : `<div class="pt-photo pt-photo-placeholder">${placeholderIcon}</div>`;
     // A <button> can't contain another <button> (invalid HTML, and the
     // click would just bubble to the outer one anyway), so the tile
     // itself is a div acting as the "tap to add" button — same click
     // delegation as before, just keyed off data-sell instead of a real
-    // <button> tag — with the waste shortcut as its own real button
-    // inside, stopping propagation so it doesn't also add to cart.
+    // <button> tag. The waste/sold-out shortcuts sit as an overlay in
+    // the photo's corner (checked before data-sell in the click
+    // handler below, so they never also add the tile to the cart).
     return `<div class="pos-tile ${status==='low'?'low':''}" data-sell="${i.id}" role="button" tabindex="0" ${left<=0?'aria-disabled="true"':''}>
+      <div class="pt-actions">
+        ${i.sourceFoodId != null ? `<button class="pt-waste-btn" data-soldout="${i.id}" title="Mark this food Sold Out — takes it off Point of Sale, no loss logged">🔴</button>` : ''}
+        <button class="pt-waste-btn" data-waste="${i.id}" title="Remove from POS — logs all remaining stock as waste">🗑</button>
+      </div>
       ${thumb}
       <div class="pt-info">
         <div class="pt-name">${escapeHtml(i.name)}</div>
         <div class="pt-size">${sizeOf(i) ? escapeHtml(sizeOf(i)) : '&nbsp;'}</div>
       </div>
-      <div class="pt-right">
-        <div class="pt-price-row">
-          <div class="pt-price">${peso(i.selling)}</div>
-          ${i.sourceFoodId != null ? `<button class="pt-waste-btn" data-soldout="${i.id}" title="Mark this food Sold Out — takes it off Point of Sale, no loss logged">🔴</button>` : ''}
-          <button class="pt-waste-btn" data-waste="${i.id}" title="Remove from POS — logs all remaining stock as waste">🗑</button>
-        </div>
+      <div class="pt-bottom">
+        <div class="pt-price">${peso(i.selling)}</div>
         <div class="pt-stock">${left<=0 ? 'none left' : left>100 ? 'available' : `${Math.round(left*100)/100} ${escapeHtml(i.unit)} left`}</div>
       </div>
     </div>`;
