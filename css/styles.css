@@ -208,6 +208,22 @@ a{color:var(--teal);text-decoration:none;}
   .page-wrap{padding:18px 16px 8px;}
   .topbar{padding:0 14px;}
   .app-foot{padding:16px;}
+
+  /* POS only: pin the title + search/category row to the top while the
+     item grid below scrolls, and shrink both a bit so they take up less
+     of a tablet's shorter viewport. Scoped to .pos-view (toggled by
+     navigate()) so no other page's toolbar is affected. */
+  .pos-view .page-head{
+    position:sticky;top:64px;z-index:15;background:var(--bg);
+    margin:0;padding:10px 0 8px;gap:10px;
+  }
+  .pos-view .page-head .page-icon{width:34px;height:34px;font-size:15px;border-radius:9px;}
+  .pos-view .page-head h1{font-size:16px;}
+  .pos-view .page-head p{font-size:10.5px;}
+  .pos-view #view-sales.active > .toolbar{
+    position:sticky;top:122px;z-index:14;background:var(--bg);
+    margin:0 0 10px;padding:8px 0;
+  }
 }
 
 /* ---------- Buttons ---------- */

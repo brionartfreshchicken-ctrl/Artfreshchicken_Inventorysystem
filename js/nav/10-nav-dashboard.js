@@ -30,6 +30,10 @@ function navigate(view){
   }
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.view===view));
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id==='view-'+view));
+  // Lets the POS page's header + search/filter row pin to the top on
+  // tablet widths (see .pos-view in styles.css) without making every
+  // other page's toolbar sticky too.
+  document.body.classList.toggle('pos-view', view === 'sales');
 
   document.getElementById('pageIcon').textContent  = pageMeta[view].ic || '•';
   document.getElementById('pageTitle').textContent = pageMeta[view].title;
