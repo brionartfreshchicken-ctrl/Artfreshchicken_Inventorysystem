@@ -8,8 +8,12 @@ let cart = [];   // [{itemId, qty}] — cleared once the sale is completed
 
 const sellable = i => i.category !== 'ingredient' && i.category !== 'tools' && i.selling != null;
 
-const POS_CAT_ORDER = ['food','snack','drink'];
-const POS_CAT_LABEL = {food:'🍽 Food Serve', snack:'🍿 Snacks', drink:'🥤 Drinks'};
+const POS_CAT_ORDER = ['food','snack','drink','food_charges'];
+// Shown even with zero items right now, unlike the others — a
+// permanent module so staff always know it's there once something
+// gets added to it, rather than it silently appearing/disappearing.
+const POS_ALWAYS_SHOW = new Set(['food_charges']);
+const POS_CAT_LABEL = {food:'🍽 Food Serve', food_charges:'🧾 Food/Item with Charges', snack:'🍿 Snacks', drink:'🥤 Drinks'};
 let posExpandedCats = new Set();   // empty = every section starts collapsed
 
 function renderPOS(){
@@ -31,7 +35,7 @@ function renderPOS(){
     const inCart = cart.find(c=>c.itemId===i.id);
     const left = i.stock - (inCart ? inCart.qty : 0);
     const status = getStatus(i);
-    const placeholderIcon = {food:'🍽', snack:'🍿', drink:'🥤'}[i.category] || '🧺';
+    const placeholderIcon = {food:'🍽', food_charges:'🧾', snack:'🍿', drink:'🥤'}[i.category] || '🧺';
     const thumb = i.image
       ? `<img class="pt-photo" src="${i.image}"/>`
       : `<div class="pt-photo pt-photo-placeholder">${placeholderIcon}</div>`;
@@ -54,7 +58,10 @@ function renderPOS(){
       </div>
       <div class="pt-bottom">
         <div class="pt-price">${peso(i.selling)}</div>
-        <div class="pt-stock">${left<=0 ? 'none left' : left>100 ? 'available' : `${Math.round(left*100)/100} ${escapeHtml(i.unit)} left`}</div>
+        <div>
+          <div class="pt-stock">${left<=0 ? 'none left' : left>100 ? 'available' : `${Math.round(left*100)/100} ${escapeHtml(i.unit)} left`}</div>
+          ${(i.conv && i.conv.qty>0 && left>0) ? `<div class="pt-stock-conv">≈ ${Math.round(left*i.conv.qty*100)/100} ${escapeHtml(i.conv.unit)}</div>` : ''}
+        </div>
       </div>
     </div>`;
   };
@@ -66,7 +73,7 @@ function renderPOS(){
   // that one section instead of three, one of them empty.
   grid.innerHTML = POS_CAT_ORDER
     .map(c => ({ c, items: list.filter(i=>i.category===c) }))
-    .filter(({items})=>items.length)
+    .filter(({c, items})=>items.length || POS_ALWAYS_SHOW.has(c))
     .map(({c, items})=>{
       const open = posExpandedCats.has(c);
       return `
@@ -75,7 +82,7 @@ function renderPOS(){
           <span class="pos-cat-arrow">${open?'▾':'▸'}</span>
           ${POS_CAT_LABEL[c]} <span class="pos-cat-count">— ${items.length} item${items.length===1?'':'s'}</span>
         </div>
-        <div class="pos-grid" style="${open?'':'display:none;'}">${items.map(tileHtml).join('')}</div>
+        <div class="pos-grid" style="${open?'':'display:none;'}">${items.length ? items.map(tileHtml).join('') : `<div class="hint" style="padding:10px 2px;">No items here yet — add one from Products.</div>`}</div>
       </div>`;
     })
     .join('');
@@ -142,8 +149,55 @@ function renderCart(){
   document.getElementById('btnCompleteSale').disabled = cart.length === 0;
   document.getElementById('pos-cash-row').style.display =
     (cart.length && document.getElementById('pos-paymethod').value === 'cash') ? '' : 'none';
+
+  // "Served By" — only shown once Admin turns it on in Settings, and
+  // required before Complete Sale when it is (see the click handler).
+  // #pos-servedby (hidden) holds the actual, confirmed selection —
+  // #pos-servedby-search is just what's typed, and only ever sets the
+  // hidden value by clicking a suggestion (see wireServedBySuggest()
+  // below), so this can never end up holding an unregistered name.
+  const servedByRow = document.getElementById('pos-servedby-row');
+  if(servedByRow) servedByRow.style.display = (cart.length && state.servedByEnabled) ? '' : 'none';
   updatePosTotals();
 }
+
+/* Live "type to see matching names" suggestions under the search box —
+   wired once at load, not rebuilt every render, so it never loses
+   keystroke focus. Selecting a suggestion is the only way the hidden
+   #pos-servedby field gets set. */
+function wireServedBySuggest(){
+  const search = document.getElementById('pos-servedby-search');
+  const hidden = document.getElementById('pos-servedby');
+  const box = document.getElementById('pos-servedby-suggest');
+
+  function showSuggestions(){
+    const term = search.value.trim().toLowerCase();
+    if(!term){ box.style.display = 'none'; return; }
+    const matches = (state.cashierNames||[]).filter(n => n.name.toLowerCase().includes(term));
+    box.innerHTML = matches.length
+      ? matches.map(n => `<div class="sg-item" data-name="${escapeHtml(n.name)}">${escapeHtml(n.name)}</div>`).join('')
+      : `<div class="sg-empty">No matching name — ask an Admin to add it in Settings</div>`;
+    box.style.display = '';
+  }
+
+  search.addEventListener('input', ()=>{
+    if(search.value.trim() !== hidden.value) hidden.value = '';   // typing again un-confirms the pick
+    showSuggestions();
+  });
+  search.addEventListener('focus', showSuggestions);
+  // A short delay so a click on a suggestion (below) still registers
+  // before the list disappears — blur fires first, click second.
+  search.addEventListener('blur', ()=> setTimeout(()=>{ box.style.display = 'none'; }, 120));
+
+  box.addEventListener('click', e=>{
+    const item = e.target.closest('[data-name]');
+    if(!item) return;
+    search.value = item.dataset.name;
+    hidden.value = item.dataset.name;
+    box.style.display = 'none';
+  });
+}
+wireServedBySuggest();
 
 /* Discount / payment method / cash & change — these live in static inputs
    (not rebuilt by renderCart) so typing in them never loses focus. This
@@ -539,6 +593,11 @@ document.getElementById('btnCompleteSale').addEventListener('click', async ()=>{
     return toast('Check and confirm the GCash payment first', true);
   }
 
+  const servedByName = document.getElementById('pos-servedby').value;
+  if(state.servedByEnabled && !servedByName){
+    return toast('Select who is handling this sale first', true);
+  }
+
   const saleItems = cart.map(c=>{
     const i = byId(c.itemId);
     return { itemId: i.id, name: displayName(i), qty: c.qty, unitPrice: i.selling, lineTotal: c.qty*i.selling };
@@ -549,7 +608,7 @@ document.getElementById('btnCompleteSale').addEventListener('click', async ()=>{
   // record atomically — see there for why this isn't several client calls.
   let sale;
   try{
-    sale = await dbCompleteSale({ items: saleItems, discount, paymentMethod, cashReceived, change, extraCharge, extraChargeLabel });
+    sale = await dbCompleteSale({ items: saleItems, discount, paymentMethod, cashReceived, change, extraCharge, extraChargeLabel, servedByName });
   }catch(err){
     toast(err.message || 'Could not record that sale', true);
     return;
@@ -582,6 +641,8 @@ document.getElementById('btnCompleteSale').addEventListener('click', async ()=>{
   document.getElementById('pos-extra-label').value = '';
   document.getElementById('pos-cash').value = '';
   document.getElementById('pos-change').value = '₱0.00';
+  document.getElementById('pos-servedby').value = '';
+  document.getElementById('pos-servedby-search').value = '';
   gcashConfirmed = false;
   gcashConfirmedAmount = null;
   gcashLastQrAmount = null;

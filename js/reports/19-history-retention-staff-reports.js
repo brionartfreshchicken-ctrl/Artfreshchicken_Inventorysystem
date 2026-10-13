@@ -178,6 +178,7 @@ async function downloadTransactionsReport(){
 
   const txnSheet = list.map(s=>({
     'Transaction #': s.txnNumber, Date: new Date(s.ts).toLocaleString(), Cashier: s.cashier||'',
+    'Served By': s.servedByName||'',
     'Product(s)': (s.items||[]).map(i=>`${i.qty}x ${i.name}`).join(', '),
     Items: s.items.length, Subtotal: round2(s.subtotal),
     'Extra Charge': round2(s.extraCharge||0), 'Extra Charge For': s.extraChargeLabel||'',
@@ -321,6 +322,7 @@ document.getElementById('btnDeleteAllTransactions').addEventListener('click', ()
 function viewSaleDetail(sale){
   const body = `
     <div class="hint">Cashier: <strong style="color:var(--text)">${escapeHtml(sale.cashier||'—')}</strong></div>
+    ${sale.servedByName ? `<div class="hint">Served By: <strong style="color:var(--text)">${escapeHtml(sale.servedByName)}</strong></div>` : ''}
     <div class="hint">Date: ${new Date(sale.ts).toLocaleString()}</div>
     <div class="hint">Payment: ${paymentLabel(sale.paymentMethod)}${sale.paymentMethod==='cash' ? ` — cash ${peso(sale.cashReceived)}, change ${peso(sale.change)}` : ''}</div>
     ${sale.status!=='completed' ? `<div class="hint" style="color:var(--red);">Status: ${sale.status==='voided'?'Voided':'Refunded'}${sale.voidReason?` — ${escapeHtml(sale.voidReason)} (${escapeHtml(sale.voidedBy||'—')})`:''}</div>` : ''}
@@ -1563,6 +1565,7 @@ async function downloadEverything(){
 
   const transactionSheet = (state.sales||[]).slice().sort((a,b)=>a.ts-b.ts).map(s=>({
     'Transaction #': s.txnNumber, Date: new Date(s.ts).toLocaleString(), Cashier: s.cashier||'',
+    'Served By': s.servedByName||'',
     Items: s.items.length, Subtotal: round2(s.subtotal),
     'Extra Charge': round2(s.extraCharge||0), 'Extra Charge For': s.extraChargeLabel||'',
     Discount: round2(s.discount),

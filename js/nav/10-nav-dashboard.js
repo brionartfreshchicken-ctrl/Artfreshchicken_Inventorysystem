@@ -7,7 +7,7 @@
 function navigate(view){
   if(!currentUser) return;                       // no session, no pages
   /* Hiding the link is not enough — block the route too. */
-  const ADMIN_ONLY  = ['settings','reports','history','purchases','suppliers','stockmovements','expenses'];
+  const ADMIN_ONLY  = ['settings','reports','history','purchases','suppliers','stockmovements','expenses','servedbyreports'];
   const STAFF_ONLY  = ['sales','cos','recipes','production','stafftime','lpg'];
   if(ADMIN_ONLY.includes(view) && !isAdmin()){
     toast('That page is for Admins only', true);
@@ -27,6 +27,12 @@ function navigate(view){
   if(PAUSED.includes(view)){
     toast('That page is turned off right now', true);
     view = isAdmin() ? 'dashboard' : 'sales';
+  }
+  // Served By Reports only exists while the feature itself is on —
+  // same "hide the link, also block the route" rule as everything else.
+  if(view === 'servedbyreports' && !state.servedByEnabled){
+    toast('Turn on Served By in Settings first', true);
+    view = 'dashboard';
   }
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.view===view));
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id==='view-'+view));
@@ -158,6 +164,9 @@ function renderAll(){
   renderStaffTime();
   renderLpgPage();
   renderStaffAccessSettings();
+  renderCashierNamesList();
+  applyServedByNavVisibility();
+  renderServedByReports();
 }
 
 /* ============================= FILTER EVENTS ============================= */

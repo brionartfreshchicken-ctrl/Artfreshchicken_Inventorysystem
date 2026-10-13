@@ -195,7 +195,7 @@ function renderInventory(){
   const st = filters['inventory-status'];
   const items = state.items.filter(i =>
     (cat==='all' || i.category===cat) && matchesSearch(i,term) && matchesStatus(i,st) &&
-    !(i.category==='food' && i.stock<=0)   // out-of-stock food comes off Products entirely — see the hint below
+    !((i.category==='food' || i.category==='food_charges') && i.stock<=0)   // out-of-stock food comes off Products entirely — see the hint below
   );
 
   /* Ingredients and Tools are never sold on their own, so Selling, Profit

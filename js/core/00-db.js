@@ -232,6 +232,7 @@ function settingsToRow(o){
   if('staffPosEnabled' in o) row.staff_pos_enabled = o.staffPosEnabled;
   if('staffFoodCostingEnabled' in o) row.staff_foodcosting_enabled = o.staffFoodCostingEnabled;
   if('staffOtherEnabled' in o) row.staff_other_enabled = o.staffOtherEnabled;
+  if('servedByEnabled' in o) row.served_by_enabled = o.servedByEnabled;
   return row;
 }
 
@@ -251,6 +252,30 @@ async function hydrateSettings(){
   state.staffPosEnabled = data.staff_pos_enabled !== false;
   state.staffFoodCostingEnabled = data.staff_foodcosting_enabled !== false;
   state.staffOtherEnabled = data.staff_other_enabled !== false;
+  state.servedByEnabled = data.served_by_enabled === true;   // defaults OFF, unlike the Staff Access flags above
+}
+
+/* ---------- cashier names ("Served By" roster) ---------- */
+
+function mapCashierNameRow(r){
+  return { id: r.id, name: r.name };
+}
+
+async function dbInsertCashierName(name){
+  const { data, error } = await sb.from('cashier_names').insert({ name }).select().single();
+  if(error) throw error;
+  return mapCashierNameRow(data);
+}
+
+async function dbDeleteCashierName(id){
+  const { error } = await sb.from('cashier_names').delete().eq('id', id);
+  if(error) throw error;
+}
+
+async function hydrateCashierNames(){
+  const { data, error } = await sb.from('cashier_names').select('*').order('name');
+  if(error){ toast('Could not load the Served By list: ' + error.message, true); return; }
+  state.cashierNames = (data || []).map(mapCashierNameRow);
 }
 
 /* ---------- document numbers ---------- */
@@ -368,6 +393,7 @@ function mapSaleRow(r){
     })),
     subtotal: Number(r.subtotal), discount: Number(r.discount),
     extraCharge: Number(r.extra_charge) || 0, extraChargeLabel: r.extra_charge_label || null,
+    servedByName: r.served_by_name || null,
     total: Number(r.total),
     paymentMethod: r.payment_method,
     cashReceived: r.cash_received == null ? null : Number(r.cash_received),
@@ -381,14 +407,15 @@ function mapSaleRow(r){
    activity rows, and the sale + sale_items record all happen atomically,
    with stock re-checked server-side so two terminals can't both sell the
    last unit of something at once. */
-async function dbCompleteSale({ items, discount, paymentMethod, cashReceived, change, extraCharge, extraChargeLabel }){
+async function dbCompleteSale({ items, discount, paymentMethod, cashReceived, change, extraCharge, extraChargeLabel, servedByName }){
   const { data: saleId, error } = await sb.rpc('complete_sale', {
     p_items: items.map(i => ({
       item_id: i.itemId, name: i.name, qty: i.qty, unit_price: i.unitPrice, line_total: i.lineTotal
     })),
     p_discount: discount, p_payment_method: paymentMethod,
     p_cash_received: cashReceived, p_change: change,
-    p_extra_charge: extraCharge || 0, p_extra_charge_label: extraChargeLabel || null
+    p_extra_charge: extraCharge || 0, p_extra_charge_label: extraChargeLabel || null,
+    p_served_by_name: servedByName || null
   });
   if(error) throw error;
 
@@ -699,6 +726,7 @@ async function hydrateFromSupabase(){
     hydrateExpenses(),
     hydrateLpgLogs(),
     hydrateSettings(),
+    hydrateCashierNames(),
     hydrateStaffTimeLogs()
   ]);
 

@@ -48,6 +48,7 @@ function renderStaffAccessSettings(){
     ['toggleStaffPos', 'staffPosEnabled'],
     ['toggleStaffFoodCosting', 'staffFoodCostingEnabled'],
     ['toggleStaffOther', 'staffOtherEnabled'],
+    ['toggleServedBy', 'servedByEnabled'],
   ];
   rows.forEach(([id, flag])=>{
     const btn = document.getElementById(id);
@@ -69,7 +70,7 @@ document.querySelectorAll('[data-staff-toggle]').forEach(btn=>{
       state[flag] = next;
       renderStaffAccessSettings();
       applyStaffFeatureVisibility();
-      toast(`Staff ${next ? 'can now use' : 'can no longer use'} that page`, 'success');
+      toast(next ? 'Turned on' : 'Turned off', 'success');
     }catch(err){
       toast('Could not save that setting: ' + err.message, true);
     }

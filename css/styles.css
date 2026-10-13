@@ -285,6 +285,15 @@ input::placeholder{color:var(--dimmer);}
   text-transform:uppercase;color:var(--dim);margin-bottom:6px;
 }
 .field-row{display:flex;gap:12px;flex-wrap:wrap;}
+
+.servedby-suggest{
+  position:absolute;left:0;right:0;top:100%;margin-top:2px;z-index:30;
+  background:var(--panel);border:1px solid var(--border);border-radius:9px;
+  box-shadow:var(--shadow);max-height:180px;overflow-y:auto;
+}
+.servedby-suggest .sg-item{padding:9px 12px;font-size:13px;cursor:pointer;}
+.servedby-suggest .sg-item:hover,.servedby-suggest .sg-item.active{background:var(--panel2);}
+.servedby-suggest .sg-empty{padding:9px 12px;font-size:12px;color:var(--dimmer);}
 .field-row .field{flex:1;min-width:150px;}
 .hint{font-size:12.5px;color:var(--dim);line-height:1.55;}
 
@@ -582,6 +591,7 @@ body.staff-mode .money-col{display:none;}
 .pos-tile .pt-bottom{display:flex;align-items:baseline;justify-content:space-between;gap:4px;margin-top:5px;}
 .pos-tile .pt-price{font-size:12.5px;font-weight:800;color:var(--teal);}
 .pos-tile .pt-stock{font-size:8.5px;color:var(--dimmer);text-align:right;}
+.pos-tile .pt-stock-conv{font-size:8px;color:var(--dimmer);text-align:right;font-style:italic;margin-top:1px;}
 .pos-tile.low .pt-stock{color:var(--amber);}
 /* Overlaid on the photo corner so a tile can be a compact square card
    instead of a wide row — still stop the click before it bubbles to

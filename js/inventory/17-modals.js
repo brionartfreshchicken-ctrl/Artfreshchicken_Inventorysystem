@@ -12,6 +12,7 @@ const UNIT_CHOICES = {
   drink:      ['pcs','bottle','can','glass','cup','L','pack','box','bundle'],
   food:       ['serving','plate','bowl'],
   tools:      ['pcs','roll','pack','box','set','pair'],
+  food_charges: ['serving','plate','bowl'],
 };
 function unitOptions(cat, current){
   const list = UNIT_CHOICES[cat] || UNIT_CHOICES.snack;
@@ -129,6 +130,7 @@ function openItemModal(mode, presetCategory, item){
         <option value="food" ${cat==='food'?'selected':''}>Food</option>
         <option value="ingredient" ${cat==='ingredient'?'selected':''}>Ingredient</option>
         <option value="tools" ${cat==='tools'?'selected':''}>Tools</option>
+        <option value="food_charges" ${cat==='food_charges'?'selected':''}>Food/Item with Charges</option>
       </select>
     </div>` : ''}
     <div class="field-row">
@@ -174,7 +176,7 @@ function openItemModal(mode, presetCategory, item){
     <div class="field-row">
       <div class="field"><label>Stock</label><input id="f-stock" type="number" min="0" step="any" value="${item?item.stock:0}"/></div>
       <div class="field"><label>Unit</label>
-        <select id="f-unit">${unitOptions(cat, item ? item.unit : (cat==='ingredient'?'kg':cat==='food'?'serving':'pcs'))}</select>
+        <select id="f-unit">${unitOptions(cat, item ? item.unit : (cat==='ingredient'?'kg':(cat==='food'||cat==='food_charges')?'serving':'pcs'))}</select>
         <input id="f-unit-other" placeholder="type the unit" value="${item && !(UNIT_CHOICES[cat]||[]).includes(item.unit) ? escapeHtml(item.unit) : ''}"
                style="margin-top:8px;display:none;"/></div>
     </div>

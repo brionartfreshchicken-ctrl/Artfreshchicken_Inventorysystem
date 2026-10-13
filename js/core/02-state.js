@@ -71,6 +71,7 @@ function defaultState(){
        "+ New Plan" on the Menu Plan page. */
     cosPlans: [],
     staffTimeLogs: [],
+    cashierNames: [],
   };
 }
 

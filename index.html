@@ -135,6 +135,7 @@
 
       <li class="nav-section" data-admin="1">Reports</li>
       <li class="nav-item" data-admin="1" data-view="reports"><span class="ic">📊</span>Reports<span class="cursor"></span></li>
+      <li class="nav-item" data-admin="1" data-requires-setting="servedByEnabled" id="nav-servedby-reports" data-view="servedbyreports"><span class="ic">🧑‍💼</span>Served By Reports<span class="cursor"></span></li>
 
       <li class="nav-section" data-admin="1">Settings</li>
       <li class="nav-item" data-admin="1" data-view="settings"><span class="ic">⚙</span>Settings<span class="cursor"></span></li>
@@ -209,6 +210,7 @@
           <option value="food">Food</option>
           <option value="ingredient">Ingredients</option>
           <option value="tools">Tools</option>
+          <option value="food_charges">Food/Item with Charges</option>
         </select>
         <select data-filter="inventory-status">
           <option value="all">All Status</option>
@@ -332,6 +334,7 @@
           <option value="snack">Snacks</option>
           <option value="drink">Drinks</option>
           <option value="food">Food</option>
+          <option value="food_charges">Food/Item with Charges</option>
         </select>
       </div>
 
@@ -370,6 +373,14 @@
                 <input id="pos-cash" type="number" min="0" step="any" placeholder="0.00"/></div>
               <div class="field"><label>Change</label>
                 <input id="pos-change" type="text" value="₱0.00" disabled/></div>
+            </div>
+            <div class="field-row" id="pos-servedby-row" style="display:none;">
+              <div class="field" style="position:relative;">
+                <label>User <span class="muted">(who's handling this sale)</span></label>
+                <input type="text" id="pos-servedby-search" placeholder="🔎 Search a name…" autocomplete="off"/>
+                <input type="hidden" id="pos-servedby"/>
+                <div id="pos-servedby-suggest" class="servedby-suggest" style="display:none;"></div>
+              </div>
             </div>
             <div id="pos-gcash-card" class="gcash-card">
               <div class="gcash-qr-wrap"><div id="pos-qr-code"></div></div>
@@ -790,6 +801,7 @@
           <option value="food">Food</option>
           <option value="ingredient">Ingredients</option>
           <option value="tools">Tools</option>
+          <option value="food_charges">Food/Item with Charges</option>
         </select>
         <span class="hint">From</span>
         <input type="date" id="rp-from" style="width:auto;"/>
@@ -846,6 +858,28 @@
           <table><thead><tr>
             <th>Item</th><th>Category</th><th>Left</th><th>Alert At</th><th>Cost/Unit</th><th>Status</th>
           </tr></thead><tbody id="tbl-restock"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SERVED BY REPORTS -->
+    <section class="view" id="view-servedbyreports">
+      <div class="toolbar">
+        <span class="hint">From</span>
+        <input type="date" id="sbr-from" style="width:auto;"/>
+        <span class="hint">To</span>
+        <input type="date" id="sbr-to" style="width:auto;"/>
+        <button class="btn ghost small" id="btnSbrReset">Reset dates</button>
+        <div style="flex:1;"></div>
+        <button class="btn primary" id="btnSbrDownload">⬇ Download</button>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="ct">Sales by Served By</div>
+          <div class="hint" id="sbr-note"></div></div>
+        <div class="card-body" style="padding:0;">
+          <table><thead><tr>
+            <th>Name</th><th class="num">Sales</th><th class="num">Items Sold</th><th class="num">Total Revenue</th><th class="num">Avg / Sale</th>
+          </tr></thead><tbody id="tbl-sbr"></tbody><tfoot id="foot-sbr"></tfoot></table>
         </div>
       </div>
     </section>
@@ -962,6 +996,32 @@
       </div>
 
       <div class="card">
+        <div class="card-head"><div class="ct">Served By</div>
+          <div class="hint">Admin only</div></div>
+        <div class="card-body">
+          <div class="hint" style="margin-bottom:14px;">
+            Keep a roster of plain names (not full accounts) so a sale can
+            record who actually handled it — useful on a shared terminal
+            where everyone checks out under one Staff login. When on, the
+            dropdown appears at checkout and must be filled in before a
+            sale can complete.
+          </div>
+          <div class="field-row" style="align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-soft);margin-bottom:12px;">
+            <div><div style="font-weight:700;">Show at checkout</div>
+              <div class="hint">Off by default — turn on when you're ready to use it</div></div>
+            <button class="btn-toggle" id="toggleServedBy" data-staff-toggle="servedByEnabled">OFF</button>
+          </div>
+          <div class="field-row">
+            <div class="field" style="flex:2;"><label>Add a name</label>
+              <input type="text" id="cn-new-name" placeholder="e.g. Maria, Counter 2"/></div>
+            <div class="field"><label>&nbsp;</label>
+              <button class="btn primary" id="btnCnAdd" style="width:100%;">+ Add Name</button></div>
+          </div>
+          <div id="cn-list" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;"></div>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-head"><div class="ct">User Accounts</div>
           <div class="hint">New accounts sign up from the login screen — promote or remove access below.</div></div>
         <div class="card-body" style="padding:0;">
@@ -1028,6 +1088,7 @@
 <script src="js/menu-plan/21-cos.js?v=2"></script>
 <script src="js/nav/23-staff-timeclock.js?v=2"></script>
 <script src="js/settings/24-staff-access.js?v=2"></script>
+<script src="js/settings/25-cashier-names.js?v=2"></script>
 <script src="js/core/22-boot.js?v=2"></script>
 <script>
 if('serviceWorker' in navigator){

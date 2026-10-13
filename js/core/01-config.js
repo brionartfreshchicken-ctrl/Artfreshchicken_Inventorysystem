@@ -63,6 +63,7 @@ const pageMeta = {
   expenses:   {ic:'🧯', title:'Operating Expenses', sub:'Every expense the business logs, plus the Staff Time Log'},
   reports:    {ic:'📊', title:'Reports',          sub:'Profit & Loss, best sellers and waste'},
   settings:   {ic:'⚙',  title:'Settings',         sub:'Accounts and access'},
+  servedbyreports: {ic:'🧑‍💼', title:'Served By Reports', sub:'Sales broken down by who actually handled each one'},
 };
 
 /* ============================= ACCOUNTS & LOGIN =============================
